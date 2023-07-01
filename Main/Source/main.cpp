@@ -1,6 +1,6 @@
-#include "Source\\std_includes.cpp"
-#include "Source\\quints.cpp"
-#include "Source\\utility.cpp"
+#include "std_includes.cpp"
+#include "quints.cpp"
+#include "utility.cpp"
 
 
 
