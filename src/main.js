@@ -5,11 +5,13 @@ const {
     Events,
     GatewayIntentBits,
     SlashCommandBuilder,
-    Message
+    Message,
+    VoiceState,
+    VoiceBasedChannel
 } = require( "discord.js" );
 
 const {
-    joinVoiceChannel, VoiceConnection, createAudioPlayer, getVoiceConnection, createAudioResource
+    joinVoiceChannel, VoiceConnection, createAudioPlayer, getVoiceConnection, createAudioResource,
 } = require( "@discordjs/voice" );
 
 const { 
@@ -27,10 +29,38 @@ const INBOUND_SPLITTER = "||SPLIT||";
 const INBOUND_MESSAGE_REPLY = "message_reply";
 
 const INBOUND_VOICE_CONNECT = "voice_connect";
+const INBOUND_VOICE_DISCONNECT = "voice_disconnect";
 const INBOUND_VOICE_PLAY = "voice_play"
 
 
-const SOUNDS_PATH_MASTER = ".\\Data\\Audio"
+
+class Voice {
+    /**
+     @param { VoiceBasedChannel } channel 
+    **/
+    constructor( channel ) {
+        this.guild_id = channel.guildId;
+
+        this.connection = joinVoiceChannel( {
+            channelId: channel.id,
+            guildId: this.guild_id,
+            adapterCreator: channel.guild.voiceAdapterCreator  
+        } );
+
+        this.audio = createAudioPlayer();
+
+        this.connection.subscribe( this.audio );
+    }
+
+
+    /**
+    @param { string } path 
+    **/
+    play( path ) {
+        this.audio.play( createAudioResource( path ) );
+    }
+
+};
 
 
 
@@ -47,18 +77,23 @@ class Engine {
         } );
 
 
-        this.client.on( Events.ClientReady, ( client ) => {
+        this.client.on( Events.ClientReady, async ( client ) => {
             this.on_ready();
         } );
 
-        this.client.on( Events.MessageCreate, ( msg ) => {
+        this.client.on( Events.MessageCreate, async ( msg ) => {
             this.on_message( msg );
         } );
 
+        this.client.on( Events.VoiceStateUpdate, async ( old_state, new_state ) => {
+            this.on_voice_state( old_state, new_state );
+        } );   
 
+
+        /**
+         @type { Voice[] }  
+        */
         this.voices = [];
-
-        this.sounds = new Map( Object.entries( JSON.parse( readFileSync( ".\\Data\\Audio\\sounds.json" ) ) ) );
 
 
         this.client.login( config.token );
@@ -98,6 +133,31 @@ class Engine {
         );
     }
 
+    /**
+    @param { VoiceState } old_state
+    @param { VoiceState } new_state
+    **/
+    on_voice_state( old_state, new_state ) {
+        this.run_engine(
+            [
+                "voice_update",
+                new_state.guild.id,
+                new_state.member.user.id,
+                old_state.channelId ?? "",
+                new_state.channelId ?? ""
+            ],
+
+            /**
+             @param { string } cout 
+            **/
+            ( cout ) => {
+                let words = cout.split( INBOUND_SPLITTER );
+
+                this.execute( words[ 0 ], new_state.guild.id, new_state.member.user.id, new_state, words.slice( 1 ) );
+            }
+        );
+    }
+
 
     run_engine( args, callback ) {
         let exe = execFile( config.exe, args );
@@ -107,7 +167,7 @@ class Engine {
         } );
 
         exe.stderr.on( "data", ( cerr ) => {
-            
+            console.log( cerr );
         } );
         
         exe.on( "exit", ( ret ) => {
@@ -126,12 +186,14 @@ class Engine {
     execute( type, guild_id, user_id, xtra, ins ) {
         switch( type ) {
             case INBOUND_MESSAGE_REPLY: {
-                xtra.reply( ins[ 0 ] );
+                xtra.reply( ins.at( 0 ) );
+
 
                 break; }
 
+
             case INBOUND_VOICE_CONNECT: {
-                let channel = this.voice_channel_get( guild_id, user_id );
+                let channel = this.voice_channel_of( guild_id, user_id );
 
                 if( !channel ) {
                     if( xtra instanceof Message ) {
@@ -142,27 +204,28 @@ class Engine {
                 }
 
 
-                joinVoiceChannel( {
-                    channelId: channel.id,
-                    guildId: channel.guildId,
-                    adapterCreator: channel.guild.voiceAdapterCreator  
-                } )
-                .subscribe( this.voices[
-                    this.voices.push( {
-                        guild_id: guild_id,
-                        audio: createAudioPlayer()
-                    } )
-                - 1 ].audio );
+                this.voices.push( new Voice( channel ) );
             
+
+                break; }
+
+            case INBOUND_VOICE_DISCONNECT: {
+                let voice = this.voice_in( guild_id );
+
+                if( !voice ) break;
+                
+                voice.connection.destroy();
+
                 
                 break; }
 
             case INBOUND_VOICE_PLAY: {
-                let voice = this.voice_get( guild_id );
+                let voice = this.voice_in( guild_id );
 
-                let sound = createAudioResource( ins[ 0 ] );
+                if( !voice ) break;
 
-                voice.audio.play( sound );
+                voice.play( ins.at( 0 ) );
+
 
                 break; }
         }
@@ -174,7 +237,7 @@ class Engine {
      @param { string } user_id 
      @returns { import("discord.js").VoiceBasedChannel }
     **/
-    voice_channel_get( guild_id, user_id ) {
+    voice_channel_of( guild_id, user_id ) {
         let guild = this.client.guilds.cache.get( guild_id );
         let member = guild.members.cache.get( user_id );
 
@@ -183,8 +246,9 @@ class Engine {
 
     /**
      @param { string } guild_id 
+     @returns { Voice }
     **/
-    voice_get( guild_id ) {
+    voice_in( guild_id ) {
         let found = null;
 
         this.voices.forEach( ( voice ) => {

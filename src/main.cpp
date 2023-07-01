@@ -1,104 +1,10 @@
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-
-#include <chrono>
-#include <thread>
-
-#include <string>
-#include <string_view>
-
-#include <functional>
-
-#include <map>
-#include <list>
-#include <deque>
-#include <vector>
-#include <set>
-
-#include <random>
-
-#include <algorithm>
-#include <utility>
-
-
-
-using namespace std :: string_literals;
-
-
-
-template< typename T > 
-using Ref = T&;
-
-using Inbounds = std :: deque< std :: string_view >;
-
-using Event_map = std :: map< std :: string_view, std :: function< void( Ref< Inbounds > ) > >;
-
-
-using ID = std :: string_view;
-
-
-
-#define OUTBOUND_SPLITTER "||SPLIT||"
-
-#define OUTBOUND_MESSAGE_REPLY "message_reply"
-#define OUTBOUND_MESSAGE_REPLY_S OUTBOUND_MESSAGE_REPLY OUTBOUND_SPLITTER
-
-#define OUTBOUND_VOICE_CONNECT "voice_connect"
-#define OUTBOUND_VOICE_CONNECT_S OUTBOUND_VOICE_CONNECT OUTBOUND_SPLITTER
-
-#define OUTBOUND_VOICE_DISCONNECT "voice_disconnect"
-#define OUTBOUND_VOICE_DISCONNECT_S OUTBOUND_VOICE_DISCONNECT OUTBOUND_SPLITTER
-
-#define OUTBOUND_VOICE_PLAY "voice_play"
-#define OUTBOUND_VOICE_PLAY_S OUTBOUND_VOICE_PLAY OUTBOUND_SPLITTER
-
-
-#define GUILDS_DEFAULT_PREFIX "."
-
-#define GUILDS_PATH_MASTER ".\\Data\\Guilds"s
-#define GUILDS_PATH_PREFIX "prefix.ahr"s
-
-
-#define USERS_PATH_MASTER ".\\Data\\Users"s
-#define USERS_PATH_CREDITS "credits.ahr"s
-#define USERS_PATH_GUILD "Guilds"s
-
-
-#define SOUNDS_PATH_MASTER ".\\Data\\Audio"s
-
-
-
-std :: string operator + ( 
-    const std :: string& string, 
-    const std :: string_view& string_view 
-) {
-    return string + string_view.data();
-}
+#include "Source\\std_includes.cpp"
+#include "Source\\quints.cpp"
+#include "Source\\utility.cpp"
 
 
 
 std :: random_device random = {};
-
-
-
-class Has_id {
-public:
-    Has_id() = default;
-
-    Has_id( ID id )
-        : _id{ id }
-    {}
-
-protected:
-    ID   _id   = {};
-
-public:
-    ID id() const {
-        return _id;
-    }
-
-};
 
 
 
@@ -114,45 +20,23 @@ public:
     }
 
 public:
-    void prefix_set( std :: string_view prefix ) const {
-        auto dir = GUILDS_PATH_MASTER
-                   + '\\' + this -> _id;
-
-        auto path = dir + '\\' + GUILDS_PATH_PREFIX;
-
-        std :: ofstream file{ path };
-
-        if( !file ) {
-            std :: filesystem :: create_directories( dir );
-
-            file.open( path );
-        }
-
-        file << prefix;
+    void prefix_to( const std :: string_view& value ) {
+        File :: overwrite(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_PREFIX,
+            value
+        );
     }
 
-    std :: string prefix_get() const {
-        std :: ifstream file{
-            GUILDS_PATH_MASTER
-            + '\\' + this -> _id
-            + '\\' + GUILDS_PATH_PREFIX
-        };
-
-        if( !file ) {
-            this -> prefix_set( GUILDS_DEFAULT_PREFIX );
-
-            return GUILDS_DEFAULT_PREFIX;
-        }
-
-        std :: string prefix{};
-
-        file >> prefix;
-
-        return prefix;
+    std :: string prefix() {
+        return File :: read< std :: string >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_PREFIX,
+            GUILDS_DEFAULT_PREFIX
+        );
     }
 
 };
-
 
 
 class User : public Has_id {
@@ -162,66 +46,76 @@ public:
     using Has_id :: Has_id;
 
 public:
-    void credits_set( size_t value, Guild guild ) {
-        auto dir = USERS_PATH_MASTER 
-                   + '\\' + this -> _id 
-                   + '\\' + USERS_PATH_GUILD 
-                   + '\\' + guild.id();
-
-        auto path = dir + '\\' + USERS_PATH_CREDITS;
-
-        std :: ofstream file{ path };
-
-        if( !file ) {
-            std :: filesystem :: create_directories( dir );
-
-            file.open( path );
-        }
-
-        file << value;
+    void credits_to( size_t value, Guild guild ) {
+        File :: overwrite(
+            USERS_PATH_MASTER + '\\' + this -> _id 
+                              + '\\' + USERS_PATH_GUILD 
+                              + '\\' + guild.id(),
+            USERS_PATH_GUILD_CREDITS,
+            value
+        );
     }
 
-    size_t credits_get( Guild guild ) {
-        std :: ifstream file { 
-            USERS_PATH_MASTER 
-            + '\\' + this -> _id 
-            + '\\' + USERS_PATH_GUILD 
-            + '\\' + guild.id() 
-            + '\\' + USERS_PATH_CREDITS 
-        };
-
-        if( !file ) {
-            this -> credits_set( 0, guild );
-
-            return 0;
-        }
-
-        size_t credits{};
-
-        file >> credits;
-
-        return credits;
+    size_t credits( Guild guild ) {
+        return File :: read< size_t >(
+            USERS_PATH_MASTER + '\\' + this -> _id 
+                              + '\\' + USERS_PATH_GUILD 
+                              + '\\' + guild.id(),
+            USERS_PATH_GUILD_CREDITS,
+            0 
+        );
     }
 
     void credits_add( size_t value, Guild guild ) {
-        this -> credits_set( 
-            ( this -> credits_get( guild ) + value ) * guild.multiplier(), 
+        this -> credits_to( 
+            ( this -> credits( guild ) + value ) * guild.multiplier(), 
             guild 
         );
     }
 
     void credits_sub( size_t value, Guild guild ) {
-        this -> credits_set( 
-            this -> credits_get( guild ) - value, 
+        this -> credits_to( 
+            this -> credits( guild ) - value, 
             guild 
         );
     }
 
+public:
+    void voice_hi_to( const std :: string_view& sound ) {
+        File :: overwrite(
+            USERS_PATH_MASTER + '\\' + this -> _id,
+            USERS_PATH_VOICE_HI,
+            sound
+        );
+    }
+
+    std :: string voice_hi() {
+        return File :: read< std :: string >(
+            USERS_PATH_MASTER + '\\' + this -> _id,
+            USERS_PATH_VOICE_HI,
+            "hello_1"
+        );
+    } 
+
+    void voice_bye_to( const std :: string_view& sound ) {
+        File :: overwrite(
+            USERS_PATH_MASTER + '\\' + this -> _id,
+            USERS_PATH_VOICE_BYE,
+            sound
+        );
+    }
+
+    std :: string voice_bye() {
+        return File :: read< std :: string >(
+            USERS_PATH_MASTER + '\\' + this -> _id,
+            USERS_PATH_VOICE_BYE,
+            "bye_great"
+        );
+    } 
+
 };
 
 
-
-#define CMD_METHOD( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
 class Command {
 public:
@@ -232,20 +126,12 @@ public:
     using Map = std :: map< size_t, Function >;
 
 public:
-    static void execute( Ref< Inbounds > ins ) {
-        Guild guild{ ins.at( 0 ) }; 
-        ins.pop_front();
+    static void execute( Guild guild, User user, Ref< Inbounds > ins ) {
+        auto guild_prefix = guild.prefix();
 
-        User user{ ins.at( 0 ) }; 
-        ins.pop_front();
+        if( !ins.at( 0 ).starts_with( guild_prefix ) ) return;
 
-
-        user.credits_add( 20, guild );
-
-
-        if( !ins.at( 0 ).starts_with( guild.prefix_get() ) ) return;
-
-        ins.at( 0 ) = ins.at( 0 ).substr( 1 );
+        ins.at( 0 ) = ins.at( 0 ).substr( guild_prefix.size() );
 
         if( ins.at( 0 ).empty() )
             ins.pop_front();
@@ -256,6 +142,11 @@ public:
 
         } catch( std :: out_of_range& err ) { 
             Command :: what( guild, user, ins );
+
+        } catch( ... ) {
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "Something went terribly wrong.";
         }
     }
 
@@ -310,19 +201,32 @@ public:
     }
 
 public:
-    CMD_METHOD( what ) {
+
+#pragma region Branches
+
+public:
+    COMMAND_BRANCH( what ) {
+        if( Sound :: exists( ins.at( 0 ) ) ) {
+            Command :: voice_play( guild, user, ins );
+
+            return;
+        }
+
+
         std :: cout
             << OUTBOUND_MESSAGE_REPLY_S
             << "Whaaaat are you sayinnnnn";
     }
 
-    CMD_METHOD( credits ) {
+public:
+    COMMAND_BRANCH( user_credits_show ) {
         std :: cout
             << OUTBOUND_MESSAGE_REPLY_S
-            << user.credits_get( guild );
+            << user.credits( guild );
     };
 
-    CMD_METHOD( hash ) {
+public:
+    COMMAND_BRANCH( hash ) {
         if( !ins.at( 0 ).starts_with( '\"' )
             ||
             !ins.at( 0 ).ends_with( '\"' ) 
@@ -341,34 +245,89 @@ public:
             << std :: hash< std :: remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
     };
 
-    CMD_METHOD( kiss ) {
+public:
+    COMMAND_BRANCH( kiss ) {
         std :: cout
             << OUTBOUND_MESSAGE_REPLY_S
             << "https://tenor.com/view/heart-ahri-love-gif-18791933";
     }
 
-    CMD_METHOD( pet ) {
+    COMMAND_BRANCH( pet ) {
         std :: cout 
             << OUTBOUND_MESSAGE_REPLY_S
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
-    CMD_METHOD( voice ) {
+public:
+    COMMAND_BRANCH( voice_connect ) {
         std :: cout 
             << OUTBOUND_VOICE_CONNECT;
     }
 
-    CMD_METHOD( leave ) {
+    COMMAND_BRANCH( voice_disconnect ) {
         std :: cout
             << OUTBOUND_VOICE_DISCONNECT;
     }
 
-    CMD_METHOD( play ) {
+    COMMAND_BRANCH( voice_play ) { 
         std :: cout
             << OUTBOUND_VOICE_PLAY_S
-            << SOUNDS_PATH_MASTER
-            << '\\' << ins.at( 0 ) << ".mp3";
+            << Sound :: path_of( ins.at( 0 ) );
     }
+
+public:
+    COMMAND_BRANCH( guild_prefix_set ) {
+        guild.prefix_to( ins.at( 0 ) );
+
+        std :: cout
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "Guild prefix is now \"" << guild.prefix() << "\"."; 
+    }
+
+    COMMAND_BRANCH( guild_prefix_show ) {
+        std :: cout
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "Guild prefix is \"" << guild.prefix() << "\".";
+    }
+
+public:
+    COMMAND_BRANCH( user_voice_hi_set ) {
+        std :: string_view name = ins.at( 0 );
+
+        if( !Sound :: exists( name ) ) {
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "There's no such sound...";
+
+            return;
+        }
+
+        user.voice_hi_to( name );
+
+        std :: cout 
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "All done.";
+    }
+
+    COMMAND_BRANCH( user_voice_bye_set ) {
+        std :: string_view name = ins.at( 0 );
+
+        if( !Sound :: exists( name ) ) {
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "There's no such sound...";
+
+            return;
+        }
+
+        user.voice_bye_to( name );
+
+        std :: cout 
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "All done.";
+    }
+
+#pragma endregion Branches
 
 public:
     inline static std :: vector< Keyword > keywords = {
@@ -376,19 +335,32 @@ public:
         { 2, { "hash" } },
         { 3, { "kiss" } },
         { 4, { "pet" } },
-        { 5, { "voice" } },
-        { 6, { "leave" } },
-        { 7, { "play" } }
+        { 5, { "voice", "connect" } },
+        { 6, { "leave", "disconnect" } },
+        { 7, { "play" } },
+        { 8, { "set", "change", "=", "make" } },
+        { 9, { "prefix" } },
+        { 10, { "hi", "hello", "greet", "salut" } },
+        { 11, { "bye", "cya" } }
     };
 
     inline static Map map = {
-        { 4330606938181995941ULL, Command :: credits },
+        { 4330606938181995941ULL, Command :: user_credits_show },
+
         { 6839924347221205416ULL, Command :: hash },
+
         { 7728093003851250935ULL, Command :: kiss },
         { 8501243811175406933ULL, Command :: pet },
-        { 7492372067882396056ULL, Command :: voice },
-        { 3435728378537700265ULL, Command :: leave },
-        { 9340956479027659370ULL, Command :: play }
+
+        { 7492372067882396056ULL, Command :: voice_connect },
+        { 3435728378537700265ULL, Command :: voice_disconnect },
+        { 9340956479027659370ULL, Command :: voice_play },
+
+        { 1062816732498115940ULL, Command :: guild_prefix_set },
+        { 2016015562653219627ULL, Command :: guild_prefix_show },
+
+        { 12382791774924742628ULL, Command :: user_voice_hi_set },
+        { 183303123199750495ULL,   Command :: user_voice_bye_set }
     };
 
 };
@@ -397,24 +369,63 @@ public:
 
 class Message {
 public:
-    static void on( Ref< Inbounds > ins ) {
+    static void on_create( Ref< Inbounds > ins ) {
         ins.pop_front();
 
-        Command :: execute( ins );
+        Guild guild{ ins.at( 0 ) };
+        ins.pop_front();
+
+        User user{ ins.at( 0 ) };
+        ins.pop_front();
+
+
+        user.credits_add( 20, guild );
+
+
+        Command :: execute( guild, user, ins );
     }
 };
 
 
-
-class Core {
+class Voice {
 public:
-    static void on( Ref< Inbounds > ins ) {
+    static void on_update( Ref< Inbounds > ins ) {
         ins.pop_front();
 
-        if( ins.front() == "hash" ) {
-            ins.pop_front();
+        Guild guild{ ins.at( 0 ) };
+        ins.pop_front();
 
-            std :: cout << std :: hash< std :: string_view >{}( ins.front() );
+        User user{ ins.at( 0 ) };
+        ins.pop_front();
+
+
+        std :: bitset< 8 > flags{};
+
+        enum What {
+            CONNECTED = 1, 
+            DISCONNECTED = 2
+        };
+
+        flags[ 0 ] = ins.at( 0 ).empty();
+        flags[ 1 ] = ins.at( 1 ).empty();
+
+        
+        switch( auto what = flags.to_ulong() ) {
+            case CONNECTED:
+            case DISCONNECTED: {
+                const bool connected = ( what == CONNECTED );
+
+                ins.emplace_front( connected ? user.voice_hi() : user.voice_bye() );
+
+                if( ins.front().empty() )
+                    ins.front() = connected ? "hello_1" : "bye_great";
+
+                if( connected )
+                    std :: this_thread :: sleep_for( std :: chrono :: milliseconds( 1500 ) );
+
+                Command :: voice_play( guild, user, ins );
+
+                break; }
         }
     }
 
@@ -423,20 +434,20 @@ public:
 
 
 Event_map event_map = {
-    { "core", Core :: on },
-    { "message",  Message :: on }
+    { "message",  Message :: on_create },
+    { "voice_update", Voice :: on_update }
 };
 
 
 
 int main( int arg_count, char* args[] ) {
-    Inbounds inbounds{};
+    Inbounds ins = {};
 
     for( int idx = 1; idx < arg_count; ++idx )
-        inbounds.push_back( args[ idx ] );
+        ins.emplace_back( args[ idx ] );
 
 
-    event_map.at( inbounds.front() )( inbounds );
+    event_map.at( ins.front() )( ins );
 
 
     return 0;
