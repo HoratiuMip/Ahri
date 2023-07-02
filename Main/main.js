@@ -9,7 +9,9 @@ const {
     AttachmentBuilder,
     EmbedBuilder,
     VoiceState,
-    VoiceBasedChannel
+    VoiceBasedChannel,
+    User,
+    Guild
 } = require( "discord.js" );
 
 const {
@@ -29,7 +31,11 @@ const {
 const INBOUND_LOW_SPLIT = "||__LOW_SPLIT__||";
 const INBOUND_HIGH_SPLIT = "||__HIGH_SPLIT__||";
 
+const INBOUND_SCRIPT = "script";
+
 const INBOUND_REPLY_MESSAGE = "reply_message";
+
+const INBOUND_REPLY_EMBED = "reply_embed"
 
 const INBOUND_VOICE_CONNECT = "voice_connect";
 const INBOUND_VOICE_DISCONNECT = "voice_disconnect";
@@ -42,11 +48,11 @@ class Voice {
      @param { VoiceBasedChannel } channel 
     **/
     constructor( channel ) {
-        this.guild_id = channel.guildId;
+        this.guild = channel.guild;
 
         this.connection = joinVoiceChannel( {
             channelId: channel.id,
-            guildId: this.guild_id,
+            guildId: this.guild.id,
             adapterCreator: channel.guild.voiceAdapterCreator  
         } );
 
@@ -140,7 +146,7 @@ class Engine {
 
                 this.execute_chain(
                     cout,
-                    msg.guildId, msg.author.id,
+                    msg.guild, msg.author,
                     msg
                 );
             }
@@ -171,7 +177,7 @@ class Engine {
 
                 this.execute_chain(
                     cout,
-                    new_state.guild.id, new_state.member.user.id,
+                    new_state.guild, new_state.member.user,
                     new_state
                 );
             }
@@ -200,40 +206,65 @@ class Engine {
 
     /**
     @param { string } chain 
-    @param { string } guild_id 
-    @param { string } user_id 
+    @param { Guild } guild 
+    @param { User } user 
     @param { * } xtra 
     @param { string[] } ins 
     **/
-    execute_chain( chain, guild_id, user_id, xtra ) {
+    execute_chain( chain, guild, user, xtra ) {
         chain.split( INBOUND_HIGH_SPLIT ).forEach( async ( high ) => {
             let lows = high.split( INBOUND_LOW_SPLIT );
 
-            this.execute_link( lows.at( 0 ), guild_id, user_id, xtra, lows.slice( 1 ) );
+            this.execute_link( lows.at( 0 ), guild, user, xtra, lows.slice( 1 ) );
         } );
     }
 
     /**
     @param { string } type 
-    @param { string } guild_id 
-    @param { string } user_id 
+    @param { Guild } guild 
+    @param { User } user
     @param { * } xtra 
     @param { string[] } ins 
     **/
-    execute_link( type, guild_id, user_id, xtra, ins ) {
+    execute_link( type, guild, user, xtra, ins ) {
         switch( type ) {
+            case INBOUND_SCRIPT: {
+                eval( ins.at( 0 ) );
+
+                break; }
+
+
             case INBOUND_REPLY_MESSAGE: {
                 xtra.reply( ins.at( 0 ) );
+
+                break; }
+            
+            
+            case INBOUND_REPLY_EMBED: {
+                let path = new AttachmentBuilder( ins.at( 3 ) );
+
+                let name = ins.at( 3 ).split( "\\" );
+                name = name.at( name.length - 1 );
+
+                let embed = new EmbedBuilder()
+                .setTitle( ins.at( 0 ) )
+                .setDescription( ins.at( 1 ) )
+                .setColor( ins.at( 2 ) )
+                .setThumbnail( `attachment://${ name }` );
+
+                xtra.reply( {
+                    files: [ path ], embeds: [ embed ]
+                } );
 
                 break; }
 
 
             case INBOUND_VOICE_CONNECT: {
-                let channel = this.voice_channel_of( guild_id, user_id );
+                let channel = this.voice_channel_of( guild, user );
 
                 if( !channel ) {
                     if( xtra instanceof Message ) {
-                        this.execute_link( INBOUND_REPLY_MESSAGE, guild_id, user_id, xtra, [ "Where are youuu..." ] );
+                        this.execute_link( INBOUND_REPLY_MESSAGE, guild, user, xtra, [ "Where are youuu..." ] );
                     }
 
                     break;
@@ -246,7 +277,7 @@ class Engine {
                 break; }
 
             case INBOUND_VOICE_DISCONNECT: {
-                let voice = this.voice_in( guild_id );
+                let voice = this.voice_in( guild );
 
                 if( !voice ) break;
                 
@@ -256,7 +287,7 @@ class Engine {
                 break; }
 
             case INBOUND_VOICE_PLAY: {
-                let voice = this.voice_in( guild_id );
+                let voice = this.voice_in( guild );
 
                 if( !voice ) break;
 
@@ -269,26 +300,25 @@ class Engine {
 
 
     /**
-     @param { string } guild_id 
-     @param { string } user_id 
+     @param { Guild } guild 
+     @param { User } user 
      @returns { VoiceBasedChannel }
     **/
-    voice_channel_of( guild_id, user_id ) {
-        let guild = this.client.guilds.cache.get( guild_id );
-        let member = guild.members.cache.get( user_id );
+    voice_channel_of( guild, user ) {
+        let member = guild.members.cache.get( user.id );
 
         return member.voice.channel;
     }
 
     /**
-     @param { string } guild_id 
+     @param { Guild } guild 
      @returns { Voice }
     **/
-    voice_in( guild_id ) {
+    voice_in( guild ) {
         let found = null;
 
         this.voices.forEach( ( voice ) => {
-            if( voice.guild_id == guild_id )
+            if( voice.guild.id == guild.id )
                 found = voice;
         } );
 

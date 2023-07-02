@@ -8,8 +8,15 @@
 #define OUTBOUND_HIGH_SPLIT "||__HIGH_SPLIT__||"
 
 
+#define OUTBOUND_SCRIPT "script"
+#define OUTBOUND_SCRIPT_L_S OUTBOUND_SCRIPT OUTBOUND_LOW_SPLIT
+
+
 #define OUTBOUND_REPLY_MESSAGE "reply_message"
 #define OUTBOUND_REPLY_MESSAGE_L_S OUTBOUND_REPLY_MESSAGE OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_REPLY_EMBED "reply_embed"
+#define OUTBOUND_REPLY_EMBED_L_S OUTBOUND_REPLY_EMBED OUTBOUND_LOW_SPLIT
 
 
 #define OUTBOUND_VOICE_CONNECT "voice_connect"
@@ -28,6 +35,10 @@
 #define SETTINGS_PATH_MASTER std :: string{ ".\\Data\\Settings" }
 
 #define SETTINGS_PATH_VOICE_HI_WAIT "voice_hi_wait.arh"
+
+
+
+#define IMAGES_EMBEDS_PATH_MASTER std :: string{ ".\\Data\\Images\\Embeds" }
 
 
 

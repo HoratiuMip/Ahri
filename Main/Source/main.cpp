@@ -243,8 +243,21 @@ public:
 public:
     COMMAND_BRANCH( user_credits_show ) {
         std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << user.credits( guild );
+            << OUTBOUND_REPLY_EMBED_L_S
+            << "You have **"
+            << user.credits( guild )
+            << "** credits cutey!"
+
+            << OUTBOUND_LOW_SPLIT
+            << "Guild multiplier is **"
+            << guild.multiplier()
+            << "**."
+
+            << OUTBOUND_LOW_SPLIT
+            << "FFD700"
+
+            << OUTBOUND_LOW_SPLIT
+            << IMAGES_EMBEDS_PATH_MASTER + '\\' + "credits.png";
     };
 
 public:
