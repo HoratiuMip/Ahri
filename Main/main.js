@@ -6,6 +6,8 @@ const {
     GatewayIntentBits,
     SlashCommandBuilder,
     Message,
+    AttachmentBuilder,
+    EmbedBuilder,
     VoiceState,
     VoiceBasedChannel
 } = require( "discord.js" );
@@ -24,9 +26,10 @@ const {
 
 
 
-const INBOUND_SPLITTER = "||__SPLIT__||";
+const INBOUND_LOW_SPLIT = "||__LOW_SPLIT__||";
+const INBOUND_HIGH_SPLIT = "||__HIGH_SPLIT__||";
 
-const INBOUND_MESSAGE_REPLY = "message_reply";
+const INBOUND_REPLY_MESSAGE = "reply_message";
 
 const INBOUND_VOICE_CONNECT = "voice_connect";
 const INBOUND_VOICE_DISCONNECT = "voice_disconnect";
@@ -122,7 +125,8 @@ class Engine {
         msg.content.split( " " ).forEach( ( component ) => {
             args.push( component );
         } );
-
+        
+        
         this.run_engine(
             args,
 
@@ -131,15 +135,17 @@ class Engine {
             **/
             ( cout ) => {
                 console.log(
-                    `\nMessage at ${ new Date().toLocaleTimeString() }.\n Inbound: "${ cout }".`
+                    `\nMessage at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
                 );
 
-                let words = cout.split( INBOUND_SPLITTER );
-
-                this.execute( words[ 0 ], msg.guildId, msg.author.id, msg, words.slice( 1 ) );
+                this.execute_chain(
+                    cout,
+                    msg.guildId, msg.author.id,
+                    msg
+                );
             }
         );
-    }
+    } 
 
     /**
     @param { VoiceState } old_state
@@ -160,12 +166,14 @@ class Engine {
             **/
             ( cout ) => {
                 console.log(
-                    `\nVoice state update at ${ new Date().toLocaleTimeString() }.\n Inbound: "${ cout }".`
+                    `\nVoice state update at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
                 );
 
-                let words = cout.split( INBOUND_SPLITTER );
-
-                this.execute( words[ 0 ], new_state.guild.id, new_state.member.user.id, new_state, words.slice( 1 ) );
+                this.execute_chain(
+                    cout,
+                    new_state.guild.id, new_state.member.user.id,
+                    new_state
+                );
             }
         );
     }
@@ -179,16 +187,31 @@ class Engine {
         } );
 
         exe.stderr.on( "data", ( cerr ) => {
-            console.log( cerr );
+            console.log( `Engine cerr'd "${ cerr }".` );
         } );
         
         exe.on( "exit", ( ret ) => {
             if( ret == 0 ) return;
 
-            console.log( `Engine returned ${ ret }.` );
+            console.log( `Engine returned "${ ret }".` );
         } ); 
     }
 
+
+    /**
+    @param { string } chain 
+    @param { string } guild_id 
+    @param { string } user_id 
+    @param { * } xtra 
+    @param { string[] } ins 
+    **/
+    execute_chain( chain, guild_id, user_id, xtra ) {
+        chain.split( INBOUND_HIGH_SPLIT ).forEach( async ( high ) => {
+            let lows = high.split( INBOUND_LOW_SPLIT );
+
+            this.execute_link( lows.at( 0 ), guild_id, user_id, xtra, lows.slice( 1 ) );
+        } );
+    }
 
     /**
     @param { string } type 
@@ -197,11 +220,10 @@ class Engine {
     @param { * } xtra 
     @param { string[] } ins 
     **/
-    execute( type, guild_id, user_id, xtra, ins ) {
+    execute_link( type, guild_id, user_id, xtra, ins ) {
         switch( type ) {
-            case INBOUND_MESSAGE_REPLY: {
+            case INBOUND_REPLY_MESSAGE: {
                 xtra.reply( ins.at( 0 ) );
-
 
                 break; }
 
@@ -211,7 +233,7 @@ class Engine {
 
                 if( !channel ) {
                     if( xtra instanceof Message ) {
-                        this.execute( INBOUND_MESSAGE_REPLY, guild_id, user_id, xtra, [ "Where are youuu..." ] );
+                        this.execute_link( INBOUND_REPLY_MESSAGE, guild_id, user_id, xtra, [ "Where are youuu..." ] );
                     }
 
                     break;
@@ -249,7 +271,7 @@ class Engine {
     /**
      @param { string } guild_id 
      @param { string } user_id 
-     @returns { import("discord.js").VoiceBasedChannel }
+     @returns { VoiceBasedChannel }
     **/
     voice_channel_of( guild_id, user_id ) {
         let guild = this.client.guilds.cache.get( guild_id );

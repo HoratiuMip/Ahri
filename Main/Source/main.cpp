@@ -155,7 +155,7 @@ public:
 
         ins.at( 0 ) = ins.at( 0 ).substr( guild_prefix.size() );
 
-        if( ins.at( 0 ).empty() )
+        if( ins.at( 0 ).empty() ) 
             ins.pop_front();
 
         
@@ -167,7 +167,7 @@ public:
 
         } catch( ... ) {
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Something went terribly wrong.";
         }
     }
@@ -236,14 +236,14 @@ public:
 
 
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "Whaaaat are you sayinnnnn";
     }
 
 public:
     COMMAND_BRANCH( user_credits_show ) {
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << user.credits( guild );
     };
 
@@ -254,7 +254,7 @@ public:
             !ins.at( 0 ).ends_with( '\"' ) 
         ) {
             std :: cout 
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Enclose the string in double quotes first.";
 
             return;
@@ -263,20 +263,26 @@ public:
         ins.at( 0 ) = ins.at( 0 ).substr( 1, ins.at( 0 ).size() - 2 );
 
         std :: cout 
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << std :: hash< std :: remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
     };
 
 public:
     COMMAND_BRANCH( kiss ) {
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "https://tenor.com/view/heart-ahri-love-gif-18791933";
+
+        std :: cout << OUTBOUND_HIGH_SPLIT;
+
+        ins.emplace_front( "kiss_1" );
+
+        Command :: voice_play( guild, user, ins );
     }
 
     COMMAND_BRANCH( pet ) {
         std :: cout 
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
@@ -293,7 +299,7 @@ public:
 
     COMMAND_BRANCH( voice_play ) { 
         std :: cout
-            << OUTBOUND_VOICE_PLAY_S
+            << OUTBOUND_VOICE_PLAY_L_S
             << Sound :: path_of( ins.at( 0 ) );
     }
 
@@ -304,7 +310,7 @@ public:
         path.reserve( PATH_MAX );
 
         std :: cout 
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "These are all the sounds I got:";
 
         for( auto& file : std :: filesystem :: directory_iterator( SOUNDS_PATH_MASTER ) ) {
@@ -327,7 +333,7 @@ public:
             auto value = static_cast< double >( Settings :: voice_hi_wait() );
 
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Now waiting **" 
                 << value / 1000.0
                 << "** seconds before saying hi!";
@@ -338,13 +344,13 @@ public:
 
         } catch( const std :: invalid_argument& err ) {
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Try again after looking at this: "
                 << "https://www.skillsyouneed.com/num/numbers.html";
 
         } catch( const std :: out_of_range& err ) {
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "I can't count that much.";
 
         }
@@ -352,7 +358,7 @@ public:
 
     COMMAND_BRANCH( settings_voice_wait_show ) {
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "Waiting **"
             << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
             << "** seconds before saying hi!";
@@ -363,13 +369,13 @@ public:
         guild.prefix_to( ins.at( 0 ) );
 
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "Guild prefix is now \"" << guild.prefix() << "\"."; 
     }
 
     COMMAND_BRANCH( guild_prefix_show ) {
         std :: cout
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "Guild prefix is \"" << guild.prefix() << "\".";
     }
 
@@ -379,7 +385,7 @@ public:
 
         if( !Sound :: exists( name ) ) {
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "There's no such sound...";
 
             return;
@@ -388,7 +394,7 @@ public:
         user.voice_hi_to( name );
 
         std :: cout 
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "All done.";
     }
 
@@ -397,7 +403,7 @@ public:
 
         if( !Sound :: exists( name ) ) {
             std :: cout
-                << OUTBOUND_MESSAGE_REPLY_S
+                << OUTBOUND_REPLY_MESSAGE_L_S
                 << "There's no such sound...";
 
             return;
@@ -406,7 +412,7 @@ public:
         user.voice_bye_to( name );
 
         std :: cout 
-            << OUTBOUND_MESSAGE_REPLY_S
+            << OUTBOUND_REPLY_MESSAGE_L_S
             << "All done.";
     }
 
@@ -471,7 +477,7 @@ public:
 
         user.credits_add( 20, guild );
 
-
+        
         Command :: execute( guild, user, ins );
     }
 };
@@ -517,6 +523,7 @@ public:
 
                 Command :: voice_play( guild, user, ins );
 
+
                 break; }
         }
     }
@@ -541,6 +548,6 @@ int main( int arg_count, char* args[] ) {
 
     event_map.at( ins.front() )( ins );
 
-
+    
     return 0;
 }
