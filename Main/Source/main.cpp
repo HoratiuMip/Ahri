@@ -8,6 +8,28 @@ std :: random_device random = {};
 
 
 
+class Settings {
+public:
+    static void voice_hi_wait_to( size_t value ) {
+        File :: overwrite(
+            SETTINGS_PATH_MASTER,
+            SETTINGS_PATH_VOICE_HI_WAIT,
+            value
+        );
+    }
+
+    static size_t voice_hi_wait() {
+        return File :: read< size_t >(
+            SETTINGS_PATH_MASTER,
+            SETTINGS_PATH_VOICE_HI_WAIT,
+            1500
+        );
+    }
+
+};
+
+
+
 class Guild : public Has_id {
 public:
     Guild() = default;
@@ -276,6 +298,67 @@ public:
     }
 
 public:
+    COMMAND_BRANCH( sounds_show ) {
+        std :: string path{};
+
+        path.reserve( PATH_MAX );
+
+        std :: cout 
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "These are all the sounds I got:";
+
+        for( auto& file : std :: filesystem :: directory_iterator( SOUNDS_PATH_MASTER ) ) {
+            path = file.path().string();
+
+            size_t slash_end = path.find_last_of( '\\' ) + 1;
+
+            std :: cout
+                << "\n**\"" 
+                << path.substr( slash_end, path.size() - slash_end - 4 )
+                << "\"**";
+        }
+    }
+
+public:
+    COMMAND_BRANCH( settings_voice_wait_set ) {
+        try {
+            Settings :: voice_hi_wait_to( std :: abs( std :: stod( ins.at( 0 ) ) ) * 1000.0 );
+
+            auto value = static_cast< double >( Settings :: voice_hi_wait() );
+
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "Now waiting **" 
+                << value / 1000.0
+                << "** seconds before saying hi!";
+
+            if( value >= 5000 )
+                std :: cout
+                    << "\nI could take a bath in the meantime tho...";
+
+        } catch( const std :: invalid_argument& err ) {
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "Try again after looking at this: "
+                << "https://www.skillsyouneed.com/num/numbers.html";
+
+        } catch( const std :: out_of_range& err ) {
+            std :: cout
+                << OUTBOUND_MESSAGE_REPLY_S
+                << "I can't count that much.";
+
+        }
+    }
+
+    COMMAND_BRANCH( settings_voice_wait_show ) {
+        std :: cout
+            << OUTBOUND_MESSAGE_REPLY_S
+            << "Waiting **"
+            << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
+            << "** seconds before saying hi!";
+    }
+
+public:
     COMMAND_BRANCH( guild_prefix_set ) {
         guild.prefix_to( ins.at( 0 ) );
 
@@ -341,7 +424,9 @@ public:
         { 8, { "set", "change", "=", "make" } },
         { 9, { "prefix" } },
         { 10, { "hi", "hello", "greet", "salut" } },
-        { 11, { "bye", "cya" } }
+        { 11, { "bye", "cya" } },
+        { 12, { "wait", "hold" } },
+        { 13, { "sounds", "soundboard" } }
     };
 
     inline static Map map = {
@@ -355,6 +440,11 @@ public:
         { 7492372067882396056ULL, Command :: voice_connect },
         { 3435728378537700265ULL, Command :: voice_disconnect },
         { 9340956479027659370ULL, Command :: voice_play },
+
+        { 15169021593429937846ULL, Command :: sounds_show },
+
+        { 6865420363795655716ULL, Command :: settings_voice_wait_set },
+        { 6685002744963886194ULL, Command :: settings_voice_wait_show },
 
         { 1062816732498115940ULL, Command :: guild_prefix_set },
         { 2016015562653219627ULL, Command :: guild_prefix_show },
@@ -421,7 +511,9 @@ public:
                     ins.front() = connected ? "hello_1" : "bye_great";
 
                 if( connected )
-                    std :: this_thread :: sleep_for( std :: chrono :: milliseconds( 1500 ) );
+                    std :: this_thread :: sleep_for( 
+                        std :: chrono :: milliseconds( Settings :: voice_hi_wait() ) 
+                    );
 
                 Command :: voice_play( guild, user, ins );
 

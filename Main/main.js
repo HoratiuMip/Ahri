@@ -24,7 +24,7 @@ const {
 
 
 
-const INBOUND_SPLITTER = "||SPLIT||";
+const INBOUND_SPLITTER = "||__SPLIT__||";
 
 const INBOUND_MESSAGE_REPLY = "message_reply";
 
@@ -82,10 +82,14 @@ class Engine {
         } );
 
         this.client.on( Events.MessageCreate, async ( msg ) => {
+            if( msg.author.bot ) return;
+
             this.on_message( msg );
         } );
 
         this.client.on( Events.VoiceStateUpdate, async ( old_state, new_state ) => {
+            if( new_state.member.user.bot ) return;
+
             this.on_voice_state( old_state, new_state );
         } );   
 
@@ -126,6 +130,10 @@ class Engine {
              @param { string } cout 
             **/
             ( cout ) => {
+                console.log(
+                    `\nMessage at ${ new Date().toLocaleTimeString() }.\n Inbound: "${ cout }".`
+                );
+
                 let words = cout.split( INBOUND_SPLITTER );
 
                 this.execute( words[ 0 ], msg.guildId, msg.author.id, msg, words.slice( 1 ) );
@@ -151,6 +159,10 @@ class Engine {
              @param { string } cout 
             **/
             ( cout ) => {
+                console.log(
+                    `\nVoice state update at ${ new Date().toLocaleTimeString() }.\n Inbound: "${ cout }".`
+                );
+
                 let words = cout.split( INBOUND_SPLITTER );
 
                 this.execute( words[ 0 ], new_state.guild.id, new_state.member.user.id, new_state, words.slice( 1 ) );
@@ -171,7 +183,9 @@ class Engine {
         } );
         
         exe.on( "exit", ( ret ) => {
-            
+            if( ret == 0 ) return;
+
+            console.log( `Engine returned ${ ret }.` );
         } ); 
     }
 
