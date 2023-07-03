@@ -139,6 +139,33 @@ public:
 
 
 
+struct Embed {
+public:
+    const std :: string_view&   title         = {};
+    const std :: string_view&   description   = {};
+    const std :: string_view&   color         = {};
+    const std :: string_view&   image         = {};
+
+public:
+    void outbound() {
+        std :: cout
+            << OUTBOUND_REPLY_EMBED_L_S
+            << ( title.empty() ? " " : title )
+
+            << OUTBOUND_LOW_SPLIT
+            << ( description.empty() ? " " : description )
+
+            << OUTBOUND_LOW_SPLIT
+            << ( color.empty() ? "000000" : color )
+
+            << OUTBOUND_LOW_SPLIT
+            << ( IMAGES_EMBEDS_PATH_MASTER + '\\' + ( image.empty() ? "empty.png" : image ) );
+    }
+
+};
+
+
+
 class Command {
 public:
     using Keyword = std :: tuple< int, std :: vector< std :: string_view > >;
@@ -242,22 +269,26 @@ public:
 
 public:
     COMMAND_BRANCH( user_credits_show ) {
-        std :: cout
-            << OUTBOUND_REPLY_EMBED_L_S
-            << "You have **"
-            << user.credits( guild )
-            << "** credits cutey!"
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "You have **"
+                << user.credits( guild )
+                << "** credits cutey!"
+            ).str(),
 
-            << OUTBOUND_LOW_SPLIT
-            << "Guild multiplier is **"
-            << guild.multiplier()
-            << "**."
+            description: (
+                std :: stringstream{}
+                << "Guild multiplier is **"
+                << guild.multiplier()
+                << "**." 
+            ).str(),
 
-            << OUTBOUND_LOW_SPLIT
-            << "FFD700"
+            color: "FFD700",
 
-            << OUTBOUND_LOW_SPLIT
-            << IMAGES_EMBEDS_PATH_MASTER + '\\' + "credits.png";
+            image: "credits.png"
+ 
+        }.outbound();
     };
 
 public:
@@ -322,20 +353,27 @@ public:
 
         path.reserve( PATH_MAX );
 
-        std :: cout 
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "These are all the sounds I got:";
+        std :: string accumulated{};
 
         for( auto& file : std :: filesystem :: directory_iterator( SOUNDS_PATH_MASTER ) ) {
             path = file.path().string();
 
             size_t slash_end = path.find_last_of( '\\' ) + 1;
-
-            std :: cout
-                << "\n**\"" 
-                << path.substr( slash_end, path.size() - slash_end - 4 )
-                << "\"**";
+ 
+            accumulated += "\n**\"";
+            accumulated += path.substr( slash_end, path.size() - slash_end - 4 );
+            accumulated += "\"**";
         }
+
+        Embed{
+            title: "These are all the sounds I got:",
+
+            description: accumulated,
+
+            color: "5D3FD3",
+
+            image: "vinyl_purple.png"
+        }.outbound();
     }
 
 public:
@@ -345,51 +383,84 @@ public:
 
             auto value = static_cast< double >( Settings :: voice_hi_wait() );
 
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "Now waiting **" 
-                << value / 1000.0
-                << "** seconds before saying hi!";
+            Embed{
+                title: (
+                    std :: stringstream{}
+                    << "Now waiting **" 
+                    << value / 1000.0
+                    << "** seconds before saying hi!"
+                ).str(),
 
-            if( value >= 5000 )
-                std :: cout
-                    << "\nI could take a bath in the meantime tho...";
+                description: ( value >= 5000 ? "\nI could take a bath in the meantime tho..." : "" ),
+
+                color: "00FF00"
+    
+            }.outbound();
 
         } catch( const std :: invalid_argument& err ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "Try again after looking at this: "
-                << "https://www.skillsyouneed.com/num/numbers.html";
+            Embed{
+                title: "Try again after looking at this: ",
+
+                description: "https://www.skillsyouneed.com/num/numbers.html",
+
+                color: "FF0000"
+    
+            }.outbound();
 
         } catch( const std :: out_of_range& err ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "I can't count that much.";
+            Embed{
+                title: "I can't count that much...",
+
+                color: "FF0000"
+    
+            }.outbound();
 
         }
     }
 
     COMMAND_BRANCH( settings_voice_wait_show ) {
-        std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "Waiting **"
-            << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
-            << "** seconds before saying hi!";
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "Waiting **"
+                << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
+                << "** seconds before saying hi!"
+            ).str(),
+
+            color: "5D3FD3"
+        }.outbound();
     }
 
 public:
     COMMAND_BRANCH( guild_prefix_set ) {
+        auto last = guild.prefix();
+
         guild.prefix_to( ins.at( 0 ) );
 
-        std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "Guild prefix is now \"" << guild.prefix() << "\"."; 
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "This guild's prefix is now \"" << guild.prefix() << "\"."
+            ).str(),
+
+            description: (
+                std :: stringstream{}
+                << "Changed it from \"" << last << "\"."
+            ).str(),
+
+            color: "00FF00"
+        }.outbound();
     }
 
     COMMAND_BRANCH( guild_prefix_show ) {
-        std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "Guild prefix is \"" << guild.prefix() << "\".";
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "This guild's prefix is \"" << guild.prefix() << "\"."
+            ).str(),
+
+            color: "5D3FD3"
+        }.outbound();
     }
 
 public:
@@ -397,36 +468,50 @@ public:
         std :: string_view name = ins.at( 0 );
 
         if( !Sound :: exists( name ) ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "There's no such sound...";
+            Embed{
+                title: "There's no such sound...",
+
+                color: "FF0000"
+            }.outbound();
 
             return;
         }
 
         user.voice_hi_to( name );
 
-        std :: cout 
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "All done.";
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "Now I'm greeting you with \"" << name << "\"."
+            ).str(),
+
+            color: "5D3FD3"
+        }.outbound();
     }
 
     COMMAND_BRANCH( user_voice_bye_set ) {
         std :: string_view name = ins.at( 0 );
 
         if( !Sound :: exists( name ) ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "There's no such sound...";
+            Embed{
+                title: "There's no such sound...",
+
+                color: "FF0000"
+            }.outbound();
 
             return;
         }
 
         user.voice_bye_to( name );
 
-        std :: cout 
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "All done.";
+        Embed{
+            title: (
+                std :: stringstream{}
+                << "Now I'm parting you with \"" << name << "\"."
+            ).str(),
+
+            color: "5D3FD3"
+        }.outbound();
     }
 
 #pragma endregion Branches
