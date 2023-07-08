@@ -192,10 +192,12 @@ public:
         } catch( std :: out_of_range& err ) { 
             Command :: what( guild, user, ins );
 
-        } catch( ... ) {
+        } catch( std :: runtime_error& err ) {
             std :: cout
                 << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Something went terribly wrong.";
+
+            std :: cerr << '\n' << err.what();
         }
     }
 
@@ -270,19 +272,17 @@ public:
 public:
     COMMAND_BRANCH( user_credits_show ) {
         Embed{
-            title: (
-                std :: stringstream{}
+            title: 
+                Stream{}
                 << "You have **"
                 << user.credits( guild )
-                << "** credits cutey!"
-            ).str(),
+                << "** credits cutey!",
 
-            description: (
-                std :: stringstream{}
+            description:
+                Stream{}
                 << "Guild multiplier is **"
                 << guild.multiplier()
-                << "**." 
-            ).str(),
+                << "**.",
 
             color: "FFD700",
 
@@ -384,12 +384,11 @@ public:
             auto value = static_cast< double >( Settings :: voice_hi_wait() );
 
             Embed{
-                title: (
-                    std :: stringstream{}
+                title:
+                    Stream{}
                     << "Now waiting **" 
                     << value / 1000.0
-                    << "** seconds before saying hi!"
-                ).str(),
+                    << "** seconds before saying hi!",
 
                 description: ( value >= 5000 ? "\nI could take a bath in the meantime tho..." : "" ),
 
@@ -420,12 +419,11 @@ public:
 
     COMMAND_BRANCH( settings_voice_wait_show ) {
         Embed{
-            title: (
-                std :: stringstream{}
+            title:
+                Stream{}
                 << "Waiting **"
                 << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
-                << "** seconds before saying hi!"
-            ).str(),
+                << "** seconds before saying hi!",
 
             color: "5D3FD3"
         }.outbound();
@@ -438,15 +436,13 @@ public:
         guild.prefix_to( ins.at( 0 ) );
 
         Embed{
-            title: (
-                std :: stringstream{}
-                << "This guild's prefix is now \"" << guild.prefix() << "\"."
-            ).str(),
+            title:
+                Stream{}
+                << "This guild's prefix is now \"" << guild.prefix() << "\".",
 
-            description: (
-                std :: stringstream{}
-                << "Changed it from \"" << last << "\"."
-            ).str(),
+            description:
+                Stream{}
+                << "Changed it from \"" << last << "\".",
 
             color: "00FF00"
         }.outbound();
@@ -454,10 +450,9 @@ public:
 
     COMMAND_BRANCH( guild_prefix_show ) {
         Embed{
-            title: (
-                std :: stringstream{}
-                << "This guild's prefix is \"" << guild.prefix() << "\"."
-            ).str(),
+            title:
+                Stream{}
+                << "This guild's prefix is \"" << guild.prefix() << "\".",
 
             color: "5D3FD3"
         }.outbound();
@@ -480,10 +475,9 @@ public:
         user.voice_hi_to( name );
 
         Embed{
-            title: (
-                std :: stringstream{}
-                << "Now I'm greeting you with \"" << name << "\"."
-            ).str(),
+            title:
+                Stream{}
+                << "Now I'm greeting you with \"" << name << "\".",
 
             color: "5D3FD3"
         }.outbound();
@@ -505,14 +499,158 @@ public:
         user.voice_bye_to( name );
 
         Embed{
-            title: (
-                std :: stringstream{}
-                << "Now I'm parting you with \"" << name << "\"."
-            ).str(),
+            title:
+                Stream{}
+                << "Now I'm parting you with \"" << name << "\".",
 
             color: "5D3FD3"
         }.outbound();
     }
+
+public:
+    class Gamble {
+    public:
+        enum Color : int {
+            RED = 1, BLACK = 2, GREEN = 4
+        };
+
+    public:
+        COMMAND_BRANCH( main ) { 
+            auto color = pull_color( ins );
+
+            if( !color ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << "What color are you gambling on?";
+
+                return;
+            }
+
+
+            auto ammount = pull_ammount( ins );
+
+            if( !ammount ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << "How much are you gambling?";
+
+                return;
+            }
+
+            if( ammount.value() < 0 ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << "Peak comedy...";
+
+                return;
+            }
+
+
+            const size_t credits = user.credits( guild );
+
+            if( ammount > credits ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << "Might wanna check your wallet...";
+
+                return;
+            }
+
+
+            const auto land   = spin();
+            int64_t    result = 0;
+
+            if( color == land_to_color( land ) )
+                result = ammount.value() * ( land == 0 ? 13 : 1 );
+            else
+                result = -ammount.value();
+
+            
+            user.credits_to( credits + result, guild );
+
+            
+            Embed{
+                title:
+                    Stream{}
+                    << "Landed on "
+                    << land
+                    << ".",
+
+                description:
+                    Stream{}
+                    << result
+                    << " credits for you sweetie.",
+
+                color: ( [ & ] () -> const char* {
+                    switch( color.value() ) {
+                        case RED: return "FF0000";
+                        case BLACK: return "000000";
+                        case GREEN: return "00FF00";
+                    }
+                } )(),
+
+                image: ( [ & ] () -> const char* {
+                    if( land == 0 ) 
+                        return "green.png";
+
+                    return land % 2 == 0 ? "red.png" : "black.png";
+                } )()
+            }.outbound();
+        }
+
+        static std :: optional< int > pull_color( Ref< Inbounds > ins ) {
+            std :: bitset< 3 > colors{};
+
+            for( size_t idx = 0; idx < 3; ++idx ) 
+                colors[ idx ] = std :: ranges :: find(
+                    ins,
+                    ( [ & ] () -> std :: string_view {
+                        switch( idx ) {
+                            case 0: return "red";
+                            case 1: return "black";
+                            case 2: return "green";
+                        }
+                    } )()
+                ) != ins.end();
+
+
+            if( colors.count() != 1 )
+                return {};
+
+            return static_cast< int >( colors.to_ulong() );
+        }
+        
+        static std :: optional< int64_t > pull_ammount( Ref< Inbounds > ins ) {
+            std :: optional< int64_t > max{};
+
+            for( auto& in : ins ) {
+                try {
+                    if( 
+                        int64_t value = std :: stoll( in ); 
+                        value > max.value_or( std :: numeric_limits< int64_t > :: min() ) 
+                    )
+                        max = value;
+
+                } catch( ... ) {
+                    continue;
+                }
+            }
+
+            return max;
+        }
+    
+
+        static int spin() {
+            return static_cast< int >( random() % 32 );
+        }
+
+        static int land_to_color( int land ) {
+            if( land == 0 )
+                return GREEN;
+
+            return land % 2 == 0 ? RED : BLACK;
+        }
+    };
 
 #pragma endregion Branches
 
@@ -530,7 +668,8 @@ public:
         { 10, { "hi", "hello", "greet", "salut" } },
         { 11, { "bye", "cya" } },
         { 12, { "wait", "hold" } },
-        { 13, { "sounds", "soundboard" } }
+        { 13, { "sounds", "soundboard" } },
+        { 14, { "gamble", "bet" } }
     };
 
     inline static Map map = {
@@ -554,7 +693,9 @@ public:
         { 2016015562653219627ULL, Command :: guild_prefix_show },
 
         { 12382791774924742628ULL, Command :: user_voice_hi_set },
-        { 183303123199750495ULL,   Command :: user_voice_bye_set }
+        { 183303123199750495ULL,   Command :: user_voice_bye_set },
+
+        { 15754336788579780731ULL, Command :: Gamble :: main }
     };
 
 };
@@ -566,10 +707,10 @@ public:
     static void on_create( Ref< Inbounds > ins ) {
         ins.pop_front();
 
-        Guild guild{ ins.at( 0 ) };
+        Guild guild{ std :: move( ins.at( 0 ) ) };
         ins.pop_front();
 
-        User user{ ins.at( 0 ) };
+        User user{ std :: move( ins.at( 0 ) ) };
         ins.pop_front();
 
 
@@ -586,10 +727,10 @@ public:
     static void on_update( Ref< Inbounds > ins ) {
         ins.pop_front();
 
-        Guild guild{ ins.at( 0 ) };
+        Guild guild{ std :: move( ins.at( 0 ) ) };
         ins.pop_front();
 
-        User user{ ins.at( 0 ) };
+        User user{ std :: move( ins.at( 0 ) ) };
         ins.pop_front();
 
 

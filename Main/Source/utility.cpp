@@ -12,7 +12,7 @@ using Inbounds = std :: deque< std :: string >;
 
 using Event_map = std :: map< std :: string_view, std :: function< void( Ref< Inbounds > ) > >;
 
-using ID = std :: string_view;
+using ID = std :: string;
 
 #define COMMAND_BRANCH( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
@@ -105,7 +105,7 @@ public:
 
             file.open( path );
         }
-
+        
         file << content;
     }
 
@@ -130,6 +130,28 @@ public:
         file >> content;
 
         return content;
+    }
+
+};
+
+
+
+class Stream : public std :: ostringstream {
+public:
+    using Base = std :: ostringstream;
+
+public:
+    Stream() = default;
+
+    using Base :: Base;
+
+public:
+    operator std :: string() const {
+        return this -> str();
+    }
+
+    operator std :: string_view () const {
+        return this -> view();
     }
 
 };

@@ -15,7 +15,9 @@ const {
 } = require( "discord.js" );
 
 const {
-    joinVoiceChannel, VoiceConnection, createAudioPlayer, getVoiceConnection, createAudioResource,
+    joinVoiceChannel,
+    createAudioPlayer, 
+    createAudioResource,
 } = require( "@discordjs/voice" );
 
 const { 
@@ -193,13 +195,13 @@ class Engine {
         } );
 
         exe.stderr.on( "data", ( cerr ) => {
-            console.log( `Engine cerr'd "${ cerr }".` );
+            console.log( `Engine cerr'd: "${ cerr }".` );
         } );
         
         exe.on( "exit", ( ret ) => {
             if( ret == 0 ) return;
 
-            console.log( `Engine returned "${ ret }".` );
+            console.log( `Engine returned: "${ ret }".` );
         } ); 
     }
 

@@ -20,6 +20,10 @@
 #include <set>
 #include <bitset>
 
+#include <ranges>
+
+#include <optional>
+
 #include <random>
 
 #include <algorithm>
