@@ -5,14 +5,75 @@
 
 
 
+class Inbounds : public std :: deque< std :: string > {
+public:
+    using Base = std :: deque< std :: string >;
+
+public:
+    using Base :: Base;
+
+public:
+    template< typename T >
+    requires( std :: is_arithmetic_v< T > )
+    auto max() {
+        if constexpr( std :: is_same_v< int64_t, T > )
+            return _max< T >( std :: stoll );
+        else if constexpr( std :: is_same_v< double, T > )
+            return _max< T, size_t* >( std :: stod, nullptr );
+    }
+
+private:
+    template< typename T, typename ...Xtra_args >
+    requires( std :: is_arithmetic_v< T > )
+    std :: optional< T > _max( T ( *func )( const std :: string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
+        std :: optional< T > max{};
+
+        for( auto& in : *this ) {
+            try {
+                if(
+                    T value = std :: invoke( func, in, xtra_args... );
+                    value > max.value_or( std :: numeric_limits< T > :: min() )
+                )
+                    max = value;
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return max;
+    }
+
+public:
+    auto first_str( const std :: vector< std :: string_view >& strs ) {
+        std :: string_view first = {};
+
+        for( auto& in : *this ) {
+            if(
+                auto itr = std :: find( strs.begin(), strs.end(), in );
+                itr != strs.end()
+            ) {
+                first = *itr;
+
+                break;
+            }
+        }
+
+        return first;
+    }
+
+};
+
+
+
 template< typename T > 
 using Ref = T&;
-
-using Inbounds = std :: deque< std :: string >;
 
 using Event_map = std :: map< std :: string_view, std :: function< void( Ref< Inbounds > ) > >;
 
 using ID = std :: string;
+
+using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
 
 #define COMMAND_BRANCH( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
@@ -130,6 +191,45 @@ public:
         file >> content;
 
         return content;
+    }
+
+public:
+    template< typename ...Args >
+    static void for_each( 
+        const std :: string_view& dir,
+        const std :: string_view& name,
+        const auto& op
+    ) {
+        _for_each< Args... >(
+            dir, name, op,
+            Args{}...
+        );
+    }
+
+private:
+    template< typename ...Args >
+    static void _for_each( 
+        const std :: string_view& dir,
+        const std :: string_view& name,
+        const auto& op,
+        Args... args
+    ) {
+        auto path = dir + '\\' + name; 
+
+        std :: ifstream file( path );
+
+        if( !file ) {
+            File :: overwrite( dir, name, "" );
+
+            return;
+        }
+
+
+        while( !file.eof() ) {
+            ( ( file >> args ),... );
+
+            op( args... );
+        }
     }
 
 };

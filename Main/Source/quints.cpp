@@ -32,9 +32,22 @@
 
 
 
+#define OUTBOUND_AUTO_VOICE_PLAY "auto_voice_play"
+#define OUTBOUND_AUTO_VOICE_PLAY_L_S OUTBOUND_AUTO_VOICE_PLAY OUTBOUND_LOW_SPLIT
+
+
+
+#define INBOUND_MESSAGE "message"
+#define INBOUND_VOICE_UPDATE "voice_update"
+#define INBOUND_TICK "tick"
+
+
+
 #define SETTINGS_PATH_MASTER std :: string{ ".\\Data\\Settings" }
 
 #define SETTINGS_PATH_VOICE_HI_WAIT "voice_hi_wait.arh"
+
+#define SETTINGS_PATH_GAMBLE_RIG "gamble_rig.arh"
 
 
 
@@ -46,6 +59,7 @@
 
 #define GUILDS_PATH_MASTER std :: string{ ".\\Data\\Guilds" }
 #define GUILDS_PATH_PREFIX "prefix.arh"
+#define GUILDS_PATH_AUTO_VOICE_PLAYS "auto_voice_plays.arh"
 
 
 

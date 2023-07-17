@@ -1,3 +1,5 @@
+//#region Includes
+
 const config = require( "./config.json" );
 
 const {
@@ -11,7 +13,7 @@ const {
     VoiceState,
     VoiceBasedChannel,
     User,
-    Guild
+    Guild,
 } = require( "discord.js" );
 
 const {
@@ -27,8 +29,13 @@ const {
 const {
     readFileSync
 } = require( "fs" );
+const { type } = require("node:os");
+const { timeStamp } = require("node:console");
+
+//#endregion
 
 
+//#region Quints
 
 const INBOUND_LOW_SPLIT = "||__LOW_SPLIT__||";
 const INBOUND_HIGH_SPLIT = "||__HIGH_SPLIT__||";
@@ -41,7 +48,21 @@ const INBOUND_REPLY_EMBED = "reply_embed"
 
 const INBOUND_VOICE_CONNECT = "voice_connect";
 const INBOUND_VOICE_DISCONNECT = "voice_disconnect";
-const INBOUND_VOICE_PLAY = "voice_play"
+const INBOUND_VOICE_PLAY = "voice_play";
+
+const INBOUND_AUTO_VOICE_PLAY = "auto_voice_play";
+
+
+const OUTBOUND_TICK = "tick";
+
+//#endregion
+
+
+//#region Utility
+
+const wait_for = async ( millis ) => {
+    return new Promise( resolve => setTimeout( resolve, millis ) );
+};
 
 
 
@@ -73,6 +94,20 @@ class Voice {
 
 };
 
+/**
+@param   { Guild } guild 
+@param   { User }  user 
+
+@returns { VoiceBasedChannel }
+**/
+const voice_channel_of = ( guild, user ) => {
+    let member = guild.members.cache.get( user.id );
+
+    return member.voice.channel;
+}
+
+//#endregion Utility
+
 
 
 class Engine {
@@ -83,7 +118,8 @@ class Engine {
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.MessageContent,
                 GatewayIntentBits.GuildMembers,
-                GatewayIntentBits.GuildVoiceStates
+                GatewayIntentBits.GuildVoiceStates,
+                GatewayIntentBits.GuildPresences
             ]
         } );
 
@@ -112,13 +148,21 @@ class Engine {
 
 
         this.client.login( config.token );
+
+        this.main_thread( [] );
     }
 
+
+//#region Ons
 
     on_ready() {
         console.log( `All nine tails ready to go. ${ this.client.user.tag } reporting in.` );
+       
+        this.client.user.setActivity( {
+            type: 0,
+            name: "in the wilds."
+        } );
     }
-
 
     /**
     @param { Message } msg
@@ -186,6 +230,10 @@ class Engine {
         );
     }
 
+//#endregion
+
+
+//#region Exe
 
     run_engine( args, callback ) {
         let exe = execFile( config.exe, args );
@@ -204,7 +252,6 @@ class Engine {
             console.log( `Engine returned: "${ ret }".` );
         } ); 
     }
-
 
     /**
     @param { string } chain 
@@ -236,11 +283,11 @@ class Engine {
                 break; }
 
 
+
             case INBOUND_REPLY_MESSAGE: {
                 xtra.reply( ins.at( 0 ) );
 
                 break; }
-            
             
             case INBOUND_REPLY_EMBED: {
                 let path = new AttachmentBuilder( ins.at( 3 ) );
@@ -261,8 +308,9 @@ class Engine {
                 break; }
 
 
+
             case INBOUND_VOICE_CONNECT: {
-                let channel = this.voice_channel_of( guild, user );
+                let channel = voice_channel_of( guild, user );
 
                 if( !channel ) {
                     if( xtra instanceof Message ) {
@@ -297,20 +345,28 @@ class Engine {
 
 
                 break; }
+
+            
+
+            case INBOUND_AUTO_VOICE_PLAY: {
+                this.voices.forEach( voice => {
+                    voice.play( ins.at( 0 ) );
+                } );
+
+                
+                xtra.delay = parseInt( ins.at( 1 ) );
+
+                xtra.unlock();
+
+
+                break; }
         }
     }
 
+//#endregion
 
-    /**
-     @param { Guild } guild 
-     @param { User } user 
-     @returns { VoiceBasedChannel }
-    **/
-    voice_channel_of( guild, user ) {
-        let member = guild.members.cache.get( user.id );
 
-        return member.voice.channel;
-    }
+//#region Utility
 
     /**
      @param { Guild } guild 
@@ -327,8 +383,45 @@ class Engine {
         return found;
     }
 
+//#endregion Utility
+
+
+    main_thread = async ( args ) => { 
+        let tick = {
+            delay: 6,
+            unlock: null
+        };
+
+        while( true ) {
+            await wait_for( tick.delay * 1000 );
+
+            tick.unlock = null;
+
+            let sync = new Promise( resolve => {
+                tick.unlock = resolve;
+            } );
+            
+            this.run_engine( 
+                [
+                    OUTBOUND_TICK
+                ],
+    
+                ( cout ) => {
+                    console.log(
+                        `\nTick at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
+                    );
+
+                    this.execute_chain( cout, null, null, tick );
+                }
+            );
+
+            await sync;
+        }
+    }
 };
 
 
 
 var ahri = new Engine();
+
+

@@ -26,6 +26,27 @@ public:
         );
     }
 
+public:
+    class Gamble {
+    public:
+        static void rig_to( double value ) {
+            File :: overwrite(
+                SETTINGS_PATH_MASTER,
+                SETTINGS_PATH_GAMBLE_RIG,
+                value
+            );
+        }
+
+        static double rig() {
+            return File :: read< double >(
+                SETTINGS_PATH_MASTER,
+                SETTINGS_PATH_GAMBLE_RIG,
+                0.0
+            );
+        }
+
+    };
+
 };
 
 
@@ -58,6 +79,49 @@ public:
         );
     }
 
+public:
+    auto voice_auto_plays() {
+        Voice_auto_plays_pairs pairs{};
+
+        File :: for_each< std :: string, double >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_AUTO_VOICE_PLAYS,
+
+            [ & ] ( std :: string& sound, double& prob ) -> void {
+                if( sound.empty() ) 
+                    return;
+
+                pairs.emplace_back( std :: move( sound ), prob );
+            }
+        );
+
+        return pairs;
+    }
+
+    void voice_auto_plays_to( const Voice_auto_plays_pairs& pairs ) {
+        std :: stringstream formated{};
+
+        for( const auto& pair : pairs )
+            formated << pair.first << ' ' << pair.second << '\n';
+
+        File :: overwrite(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_AUTO_VOICE_PLAYS,
+            formated.str()
+        );
+    }
+
+    void voice_auto_plays_calibrate( double accumulated, Voice_auto_plays_pairs& pairs ) {
+        for( auto& pair : pairs )
+            accumulated += pair.second;
+
+        if( accumulated <= 1.0 ) 
+            return;
+
+        for( auto& pair : pairs ) 
+            pair.second /= accumulated;
+    }
+
 };
 
 
@@ -70,8 +134,8 @@ public:
 public:
     void credits_to( size_t value, Guild guild ) {
         File :: overwrite(
-            USERS_PATH_MASTER + '\\' + this -> _id 
-                              + '\\' + USERS_PATH_GUILD 
+            USERS_PATH_MASTER + '\\' + this -> _id
+                              + '\\' + USERS_PATH_GUILD
                               + '\\' + guild.id(),
             USERS_PATH_GUILD_CREDITS,
             value
@@ -80,25 +144,25 @@ public:
 
     size_t credits( Guild guild ) {
         return File :: read< size_t >(
-            USERS_PATH_MASTER + '\\' + this -> _id 
-                              + '\\' + USERS_PATH_GUILD 
+            USERS_PATH_MASTER + '\\' + this -> _id
+                              + '\\' + USERS_PATH_GUILD
                               + '\\' + guild.id(),
             USERS_PATH_GUILD_CREDITS,
-            0 
+            0
         );
     }
 
     void credits_add( size_t value, Guild guild ) {
-        this -> credits_to( 
-            ( this -> credits( guild ) + value ) * guild.multiplier(), 
-            guild 
+        this -> credits_to(
+            ( this -> credits( guild ) + value ) * guild.multiplier(),
+            guild
         );
     }
 
     void credits_sub( size_t value, Guild guild ) {
-        this -> credits_to( 
-            this -> credits( guild ) - value, 
-            guild 
+        this -> credits_to(
+            this -> credits( guild ) - value,
+            guild
         );
     }
 
@@ -117,7 +181,7 @@ public:
             USERS_PATH_VOICE_HI,
             "hello_1"
         );
-    } 
+    }
 
     void voice_bye_to( const std :: string_view& sound ) {
         File :: overwrite(
@@ -133,7 +197,7 @@ public:
             USERS_PATH_VOICE_BYE,
             "bye_great"
         );
-    } 
+    }
 
 };
 
@@ -182,15 +246,15 @@ public:
 
         ins.at( 0 ) = ins.at( 0 ).substr( guild_prefix.size() );
 
-        if( ins.at( 0 ).empty() ) 
+        if( ins.at( 0 ).empty() )
             ins.pop_front();
 
-        
+
         try {
             std :: invoke( map.at( make_sense_of( ins ) ), guild, user, ins );
 
-        } catch( std :: out_of_range& err ) { 
-            Command :: what( guild, user, ins );
+        } catch( std :: out_of_range& err ) {
+            what( guild, user, ins );
 
         } catch( std :: runtime_error& err ) {
             std :: cout
@@ -207,20 +271,20 @@ public:
 
 
         for( auto itr = ins.begin(); itr != ins.end(); ) {
-            auto found = std :: find_if( 
-                keywords.begin(), keywords.end(), 
+            auto found = std :: find_if(
+                keywords.begin(), keywords.end(),
 
                 [ & ] ( auto& entry ) -> bool {
                     for( auto& alias : std :: get< 1 >( entry ) )
                         if( *itr == alias )
                             return true;
-                    
+
                     return false;
-                } 
+                }
             );
 
-            if( 
-                found == keywords.end() 
+            if(
+                found == keywords.end()
                 ||
                 (
                     std :: find_if( kws.begin(), kws.end(), [ & ] ( auto& kw ) -> bool {
@@ -245,9 +309,9 @@ public:
 
 
         for( auto& kw : kws )
-            chain += std :: get< 1 >( *kw )[ 0 ]; 
+            chain += std :: get< 1 >( *kw )[ 0 ];
 
-        
+
         return std :: hash< std :: string_view >{}( chain );
     }
 
@@ -257,11 +321,12 @@ public:
 
 public:
     COMMAND_BRANCH( what ) {
-        if( Sound :: exists( ins.at( 0 ) ) ) {
-            Command :: voice_play( guild, user, ins );
+        if( !ins.empty() )
+            if( Sound :: exists( ins.at( 0 ) ) ) {
+                voice_play( guild, user, ins );
 
-            return;
-        }
+                return;
+            }
 
 
         std :: cout
@@ -270,34 +335,12 @@ public:
     }
 
 public:
-    COMMAND_BRANCH( user_credits_show ) {
-        Embed{
-            title: 
-                Stream{}
-                << "You have **"
-                << user.credits( guild )
-                << "** credits cutey!",
-
-            description:
-                Stream{}
-                << "Guild multiplier is **"
-                << guild.multiplier()
-                << "**.",
-
-            color: "FFD700",
-
-            image: "credits.png"
- 
-        }.outbound();
-    };
-
-public:
     COMMAND_BRANCH( hash ) {
         if( !ins.at( 0 ).starts_with( '\"' )
             ||
-            !ins.at( 0 ).ends_with( '\"' ) 
+            !ins.at( 0 ).ends_with( '\"' )
         ) {
-            std :: cout 
+            std :: cout
                 << OUTBOUND_REPLY_MESSAGE_L_S
                 << "Enclose the string in double quotes first.";
 
@@ -306,7 +349,7 @@ public:
 
         ins.at( 0 ) = ins.at( 0 ).substr( 1, ins.at( 0 ).size() - 2 );
 
-        std :: cout 
+        std :: cout
             << OUTBOUND_REPLY_MESSAGE_L_S
             << std :: hash< std :: remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
     };
@@ -321,18 +364,18 @@ public:
 
         ins.emplace_front( "kiss_1" );
 
-        Command :: voice_play( guild, user, ins );
+        voice_play( guild, user, ins );
     }
 
     COMMAND_BRANCH( pet ) {
-        std :: cout 
+        std :: cout
             << OUTBOUND_REPLY_MESSAGE_L_S
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
 public:
     COMMAND_BRANCH( voice_connect ) {
-        std :: cout 
+        std :: cout
             << OUTBOUND_VOICE_CONNECT;
     }
 
@@ -341,14 +384,13 @@ public:
             << OUTBOUND_VOICE_DISCONNECT;
     }
 
-    COMMAND_BRANCH( voice_play ) { 
+    COMMAND_BRANCH( voice_play ) {
         std :: cout
             << OUTBOUND_VOICE_PLAY_L_S
             << Sound :: path_of( ins.at( 0 ) );
     }
 
-public:
-    COMMAND_BRANCH( sounds_show ) {
+    COMMAND_BRANCH( voice_sounds_show ) {
         std :: string path{};
 
         path.reserve( PATH_MAX );
@@ -359,7 +401,7 @@ public:
             path = file.path().string();
 
             size_t slash_end = path.find_last_of( '\\' ) + 1;
- 
+
             accumulated += "\n**\"";
             accumulated += path.substr( slash_end, path.size() - slash_end - 4 );
             accumulated += "\"**";
@@ -376,6 +418,10 @@ public:
         }.outbound();
     }
 
+    COMMAND_BRANCH( voice_auto_play ) {
+
+        }
+
 public:
     COMMAND_BRANCH( settings_voice_wait_set ) {
         try {
@@ -386,14 +432,14 @@ public:
             Embed{
                 title:
                     Stream{}
-                    << "Now waiting **" 
+                    << "Now waiting **"
                     << value / 1000.0
                     << "** seconds before saying hi!",
 
                 description: ( value >= 5000 ? "\nI could take a bath in the meantime tho..." : "" ),
 
                 color: "00FF00"
-    
+
             }.outbound();
 
         } catch( const std :: invalid_argument& err ) {
@@ -403,7 +449,7 @@ public:
                 description: "https://www.skillsyouneed.com/num/numbers.html",
 
                 color: "FF0000"
-    
+
             }.outbound();
 
         } catch( const std :: out_of_range& err ) {
@@ -411,23 +457,23 @@ public:
                 title: "I can't count that much...",
 
                 color: "FF0000"
-    
+
             }.outbound();
 
         }
     }
 
     COMMAND_BRANCH( settings_voice_wait_show ) {
-        Embed{
-            title:
-                Stream{}
-                << "Waiting **"
-                << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
-                << "** seconds before saying hi!",
+            Embed{
+                title:
+                    Stream{}
+                    << "Waiting **"
+                    << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
+                    << "** seconds before saying hi!",
 
-            color: "5D3FD3"
-        }.outbound();
-    }
+                color: "5D3FD3"
+            }.outbound();
+        }
 
 public:
     COMMAND_BRANCH( guild_prefix_set ) {
@@ -449,16 +495,92 @@ public:
     }
 
     COMMAND_BRANCH( guild_prefix_show ) {
-        Embed{
-            title:
-                Stream{}
-                << "This guild's prefix is \"" << guild.prefix() << "\".",
+            Embed{
+                title:
+                    Stream{}
+                    << "This guild's prefix is \"" << guild.prefix() << "\".",
 
-            color: "5D3FD3"
-        }.outbound();
+                color: "5D3FD3"
+            }.outbound();
+        }
+
+    COMMAND_BRANCH( guild_voice_auto_plays_add ) {
+        std :: string_view sound{};
+
+
+        for( auto& in : ins )
+            if( Sound :: exists( in ) ) {
+                sound = in;
+
+                goto Label_sound_found;
+            }
+
+        std :: cout
+            << OUTBOUND_REPLY_MESSAGE_L_S
+            << "What sound sweetie?";
+
+        return;
+
+
+        Label_sound_found:
+
+
+        auto pairs = guild.voice_auto_plays();
+        
+
+        auto prob = ins.max< double >(); 
+
+        if( !prob.has_value() ) {
+            std :: cout
+                << OUTBOUND_REPLY_MESSAGE_L_S
+                << "A probability perhaps?";
+
+            return;
+        }
+
+        if( prob.value() < 0.0 ) {
+            std :: cout
+                << OUTBOUND_REPLY_MESSAGE_L_S
+                << "Funneh eh?";
+
+            return;
+        }
+
+
+        guild.voice_auto_plays_calibrate( prob.value(), pairs );
+
+        pairs.emplace_back( sound, prob.value() );
+
+        guild.voice_auto_plays_to( pairs );
+
+
+        std :: cout
+            << OUTBOUND_REPLY_MESSAGE_L_S
+            << "First try";
     }
 
 public:
+    COMMAND_BRANCH( user_credits_show ) {
+        Embed{
+            title:
+                Stream{}
+                << "You have **"
+                << user.credits( guild )
+                << "** credits cutey!",
+
+            description:
+                Stream{}
+                << "Guild multiplier is **"
+                << guild.multiplier()
+                << "**.",
+
+            color: "FFD700",
+
+            image: "credits.png"
+
+        }.outbound();
+    };
+
     COMMAND_BRANCH( user_voice_hi_set ) {
         std :: string_view name = ins.at( 0 );
 
@@ -484,28 +606,28 @@ public:
     }
 
     COMMAND_BRANCH( user_voice_bye_set ) {
-        std :: string_view name = ins.at( 0 );
+            std :: string_view name = ins.at( 0 );
 
-        if( !Sound :: exists( name ) ) {
+            if( !Sound :: exists( name ) ) {
+                Embed{
+                    title: "There's no such sound...",
+
+                    color: "FF0000"
+                }.outbound();
+
+                return;
+            }
+
+            user.voice_bye_to( name );
+
             Embed{
-                title: "There's no such sound...",
+                title:
+                    Stream{}
+                    << "Now I'm parting you with \"" << name << "\".",
 
-                color: "FF0000"
+                color: "5D3FD3"
             }.outbound();
-
-            return;
         }
-
-        user.voice_bye_to( name );
-
-        Embed{
-            title:
-                Stream{}
-                << "Now I'm parting you with \"" << name << "\".",
-
-            color: "5D3FD3"
-        }.outbound();
-    }
 
 public:
     class Gamble {
@@ -515,8 +637,8 @@ public:
         };
 
     public:
-        COMMAND_BRANCH( main ) { 
-            auto color = pull_color( ins );
+        COMMAND_BRANCH( main ) {
+            auto color = _pull_color( ins );
 
             if( !color ) {
                 std :: cout
@@ -527,7 +649,7 @@ public:
             }
 
 
-            auto ammount = pull_ammount( ins );
+            auto ammount = _pull_ammount( ins );
 
             if( !ammount ) {
                 std :: cout
@@ -557,18 +679,18 @@ public:
             }
 
 
-            const auto land   = spin();
+            const auto land   = _roulette_spin( color.value() );
             int64_t    result = 0;
 
-            if( color == land_to_color( land ) )
+            if( color == _roulette_land_to_color( land ) )
                 result = ammount.value() * ( land == 0 ? 13 : 1 );
             else
                 result = -ammount.value();
 
-            
+
             user.credits_to( credits + result, guild );
 
-            
+
             Embed{
                 title:
                     Stream{}
@@ -590,7 +712,7 @@ public:
                 } )(),
 
                 image: ( [ & ] () -> const char* {
-                    if( land == 0 ) 
+                    if( land == 0 )
                         return "green.png";
 
                     return land % 2 == 0 ? "red.png" : "black.png";
@@ -598,13 +720,54 @@ public:
             }.outbound();
         }
 
-        static std :: optional< int > pull_color( Ref< Inbounds > ins ) {
+        COMMAND_BRANCH( rig_set ) {
+            double rig_value = -1.0;
+
+            for( auto& in : ins ) {
+                try {
+                    double entry = std :: stod( in );
+
+                    if( !_rig_in_range( entry ) ) continue;
+
+                    rig_value = entry;
+
+                } catch( ... ) {
+                    continue;
+                }
+            }
+
+            if( rig_value == -1.0 ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << "I need something between 0.0 and 1.0...";
+
+                return;
+            }
+
+
+            Settings :: Gamble :: rig_to( rig_value );
+
+
+            Embed{
+                title:
+                    Stream{} << "Gamble rig value is now **" << rig_value << "**",
+
+                description:
+                    Stream{} << ( rig_value >= 0.5 ? "Hehe" : "" ),
+
+                color: "5D3FD3"
+
+            }.outbound();
+        }
+
+    private:
+        static std :: optional< int > _pull_color( Ref< Inbounds > ins ) {
             std :: bitset< 3 > colors{};
 
-            for( size_t idx = 0; idx < 3; ++idx ) 
+            for( size_t idx = 0; idx < 3; ++idx )
                 colors[ idx ] = std :: ranges :: find(
                     ins,
-                    ( [ & ] () -> std :: string_view {
+                    ( [ & ] () -> const char* {
                         switch( idx ) {
                             case 0: return "red";
                             case 1: return "black";
@@ -619,15 +782,15 @@ public:
 
             return static_cast< int >( colors.to_ulong() );
         }
-        
-        static std :: optional< int64_t > pull_ammount( Ref< Inbounds > ins ) {
+
+        static std :: optional< int64_t > _pull_ammount( Ref< Inbounds > ins ) {
             std :: optional< int64_t > max{};
 
             for( auto& in : ins ) {
                 try {
-                    if( 
-                        int64_t value = std :: stoll( in ); 
-                        value > max.value_or( std :: numeric_limits< int64_t > :: min() ) 
+                    if(
+                        int64_t value = std :: stoll( in );
+                        value > max.value_or( std :: numeric_limits< int64_t > :: min() )
                     )
                         max = value;
 
@@ -638,18 +801,30 @@ public:
 
             return max;
         }
-    
 
-        static int spin() {
-            return static_cast< int >( random() % 32 );
+    private:
+        static int _roulette_spin( int gambled_color ) {
+            int land = static_cast< int >( random() % 32 );
+
+            if( _roulette_land_to_color( land ) == gambled_color )
+                if( random() % 100 < Settings :: Gamble :: rig() * 100 )
+                    land = std :: clamp( land + 1, 0, 31 );
+
+            return land;
         }
 
-        static int land_to_color( int land ) {
+        static int _roulette_land_to_color( int land ) {
             if( land == 0 )
                 return GREEN;
 
             return land % 2 == 0 ? RED : BLACK;
         }
+
+    private:
+        static bool _rig_in_range( double rig_value ) {
+            return rig_value >= 0.0 && rig_value <= 1.0;
+        }
+
     };
 
 #pragma endregion Branches
@@ -669,33 +844,37 @@ public:
         { 11, { "bye", "cya" } },
         { 12, { "wait", "hold" } },
         { 13, { "sounds", "soundboard" } },
-        { 14, { "gamble", "bet" } }
+        { 14, { "gamble", "bet" } },
+        { 15, { "rig" } },
+        { 16, { "push", "add", "+" } },
+        { 17, { "pop", "sub", "-", "erase", "remove" } },
+        { 18, { "auto" } }
     };
 
     inline static Map map = {
-        { 4330606938181995941ULL, Command :: user_credits_show },
+        { 6839924347221205416ULL, hash },
 
-        { 6839924347221205416ULL, Command :: hash },
+        { 7728093003851250935ULL, kiss },
+        { 8501243811175406933ULL, pet },
 
-        { 7728093003851250935ULL, Command :: kiss },
-        { 8501243811175406933ULL, Command :: pet },
+        { 7492372067882396056ULL,  voice_connect },
+        { 3435728378537700265ULL,  voice_disconnect },
+        { 9340956479027659370ULL,  voice_play },
+        { 15169021593429937846ULL, voice_sounds_show },
 
-        { 7492372067882396056ULL, Command :: voice_connect },
-        { 3435728378537700265ULL, Command :: voice_disconnect },
-        { 9340956479027659370ULL, Command :: voice_play },
+        { 6865420363795655716ULL, settings_voice_wait_set },
+        { 6685002744963886194ULL, settings_voice_wait_show },
 
-        { 15169021593429937846ULL, Command :: sounds_show },
+        { 1062816732498115940ULL,  guild_prefix_set },
+        { 2016015562653219627ULL,  guild_prefix_show },
+        { 14632587987046264091ULL, guild_voice_auto_plays_add },
 
-        { 6865420363795655716ULL, Command :: settings_voice_wait_set },
-        { 6685002744963886194ULL, Command :: settings_voice_wait_show },
+        { 4330606938181995941ULL,  user_credits_show },
+        { 12382791774924742628ULL, user_voice_hi_set },
+        { 183303123199750495ULL,   user_voice_bye_set },
 
-        { 1062816732498115940ULL, Command :: guild_prefix_set },
-        { 2016015562653219627ULL, Command :: guild_prefix_show },
-
-        { 12382791774924742628ULL, Command :: user_voice_hi_set },
-        { 183303123199750495ULL,   Command :: user_voice_bye_set },
-
-        { 15754336788579780731ULL, Command :: Gamble :: main }
+        { 15754336788579780731ULL, Gamble :: main },
+        { 11779848440330006868ULL, Gamble :: rig_set }
     };
 
 };
@@ -716,7 +895,7 @@ public:
 
         user.credits_add( 20, guild );
 
-        
+
         Command :: execute( guild, user, ins );
     }
 };
@@ -737,14 +916,14 @@ public:
         std :: bitset< 8 > flags{};
 
         enum What {
-            CONNECTED = 1, 
+            CONNECTED = 1,
             DISCONNECTED = 2
         };
 
         flags[ 0 ] = ins.at( 0 ).empty();
         flags[ 1 ] = ins.at( 1 ).empty();
 
-        
+
         switch( auto what = flags.to_ulong() ) {
             case CONNECTED:
             case DISCONNECTED: {
@@ -756,8 +935,8 @@ public:
                     ins.front() = connected ? "hello_1" : "bye_great";
 
                 if( connected )
-                    std :: this_thread :: sleep_for( 
-                        std :: chrono :: milliseconds( Settings :: voice_hi_wait() ) 
+                    std :: this_thread :: sleep_for(
+                        std :: chrono :: milliseconds( Settings :: voice_hi_wait() )
                     );
 
                 Command :: voice_play( guild, user, ins );
@@ -771,9 +950,24 @@ public:
 
 
 
+class Tick {
+public:
+    static void on_tick( Ref< Inbounds > ins ) {
+        std :: cout
+            << OUTBOUND_AUTO_VOICE_PLAY_L_S
+            << Sound :: path_of( "door" )
+            << OUTBOUND_LOW_SPLIT
+            << random() % 1200 + 600;
+    }
+
+};
+
+
+
 Event_map event_map = {
-    { "message",  Message :: on_create },
-    { "voice_update", Voice :: on_update }
+    { INBOUND_MESSAGE,      Message :: on_create },
+    { INBOUND_VOICE_UPDATE, Voice :: on_update },
+    { INBOUND_TICK,         Tick :: on_tick }
 };
 
 
@@ -787,6 +981,6 @@ int main( int arg_count, char* args[] ) {
 
     event_map.at( ins.front() )( ins );
 
-    
+
     return 0;
 }
