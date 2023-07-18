@@ -37,6 +37,11 @@
 
 
 
+#define OUTBOUND_TICK_GUILD_SET "tick_guild_set"
+#define OUTBOUND_TICK_GUILD_SET_L_S OUTBOUND_TICK_GUILD_SET OUTBOUND_LOW_SPLIT
+
+
+
 #define INBOUND_MESSAGE "message"
 #define INBOUND_VOICE_UPDATE "voice_update"
 #define INBOUND_TICK "tick"
@@ -52,6 +57,10 @@
 
 
 #define IMAGES_EMBEDS_PATH_MASTER std :: string{ ".\\Data\\Images\\Embeds" }
+
+
+
+#define EMBEDS_COLOR_INFO "5D3FD3"
 
 
 

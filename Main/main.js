@@ -14,6 +14,7 @@ const {
     VoiceBasedChannel,
     User,
     Guild,
+    ApplicationCommandNumericOptionMinMaxValueMixin,
 } = require( "discord.js" );
 
 const {
@@ -23,7 +24,8 @@ const {
 } = require( "@discordjs/voice" );
 
 const { 
-    execFile 
+    execFile,
+    execFileSync
 } = require( "node:child_process" );
 
 const {
@@ -53,6 +55,9 @@ const INBOUND_VOICE_PLAY = "voice_play";
 const INBOUND_AUTO_VOICE_PLAY = "auto_voice_play";
 
 
+const INBOUND_TICK_GUILD_SET = "tick_guild_set";
+
+
 const OUTBOUND_TICK = "tick";
 
 //#endregion
@@ -62,6 +67,32 @@ const OUTBOUND_TICK = "tick";
 
 const wait_for = async ( millis ) => {
     return new Promise( resolve => setTimeout( resolve, millis ) );
+};
+
+
+class Echo {
+    constructor( entries ) {
+        this._entries = {};
+
+        this.push( entries );
+    }
+
+
+    release = () => {
+        console.log( this._entries );
+        console.log();
+    }
+
+
+    push = ( entries ) => {
+        if( entries instanceof Array )
+            entries.forEach( entry => {
+                this._entries[ entry.info ] = entry.data;
+            } );
+        else if( entries )
+            this._entries[ entries.info ] = entries.data;
+    }
+
 };
 
 
@@ -147,17 +178,18 @@ class Engine {
         this.voices = [];
 
 
-        this.client.login( config.token );
-
-        this.main_thread( [] );
+        this.client.login( config.token )
+        .then( () => {
+            this.guilds_launch_threads();
+        } );
     }
 
 
 //#region Ons
 
     on_ready() {
-        console.log( `All nine tails ready to go. ${ this.client.user.tag } reporting in.` );
-       
+        console.log( `All nine tails ready to go. ${ this.client.user.tag } reporting in.\n\n` );
+    
         this.client.user.setActivity( {
             type: 0,
             name: "in the wilds."
@@ -168,6 +200,13 @@ class Engine {
     @param { Message } msg
     **/
     on_message( msg ) {
+        let echo = new Echo( [
+            { info: "Message", data: `At ${ new Date().toLocaleTimeString() }` },
+            { info: "In", data: { guild: msg.guild.name, id: msg.guildId } },
+            { info: "By", data: { user: msg.author.username, id: msg.author.id } }
+        ] );
+
+
         let args = [
             "message",
             msg.guildId,
@@ -179,23 +218,20 @@ class Engine {
         } );
         
         
-        this.run_engine(
-            args,
+        let inbound = this.run_engine( args );
 
-            /**
-             @param { string } cout 
-            **/
-            ( cout ) => {
-                console.log(
-                    `\nMessage at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
-                );
 
-                this.execute_chain(
-                    cout,
-                    msg.guild, msg.author,
-                    msg
-                );
-            }
+        echo.push( {
+            info: "Inbound", data: inbound
+        } );
+
+        echo.release();
+
+
+        this.execute_chain(
+            inbound,
+            msg.guild, msg.author,
+            msg
         );
     } 
 
@@ -204,30 +240,58 @@ class Engine {
     @param { VoiceState } new_state
     **/
     on_voice_state( old_state, new_state ) {
-        this.run_engine(
-            [
-                "voice_update",
-                new_state.guild.id,
-                new_state.member.user.id,
-                old_state.channelId ?? "",
-                new_state.channelId ?? ""
-            ],
+        let echo = new Echo( [
+            { info: "VoiceStateUpdate", data: `At ${ new Date().toLocaleTimeString() }` },
+            { info: "In", data: { guild: new_state.guild.name, id: new_state.guild.id } },
+            { info: "By", data: { user: new_state.member.user.username, id: new_state.member.user.id } }
+        ] );
 
-            /**
-             @param { string } cout 
-            **/
-            ( cout ) => {
-                console.log(
-                    `\nVoice state update at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
-                );
 
-                this.execute_chain(
-                    cout,
-                    new_state.guild, new_state.member.user,
-                    new_state
-                );
-            }
+        let inbound = this.run_engine( [
+            "voice_update",
+            new_state.guild.id,
+            new_state.member.user.id,
+            old_state.channelId ?? "",
+            new_state.channelId ?? ""
+        ] );
+
+
+        echo.push( {
+            info: "Inbound", data: inbound
+        } );
+
+        echo.release();
+
+
+        this.execute_chain(
+            inbound,
+            new_state.guild, new_state.member.user,
+            new_state
         );
+    }
+
+
+    on_tick = ( tick ) => {
+        let echo = new Echo( [
+            { info: "Tick", data: `At ${ new Date().toLocaleTimeString() }` },
+            { info: "In", data: { guild: tick.guild.name, id: tick.guild.id } }
+        ] );
+
+
+        let inbound = this.run_engine( [
+            OUTBOUND_TICK,
+            tick.guild.id
+        ] );
+
+
+        echo.push( {
+            info: "Inbound", data: inbound
+        } );
+
+        echo.release();
+
+
+        this.execute_chain( inbound, null, null, tick );
     }
 
 //#endregion
@@ -235,22 +299,23 @@ class Engine {
 
 //#region Exe
 
-    run_engine( args, callback ) {
-        let exe = execFile( config.exe, args );
+    run_engine( args ) {
+        try {
+            return execFileSync( 
+                config.exe, 
+                args, 
+                { stdio: [ "ignore", "pipe", "pipe" ] } 
+            ).toString();
 
-        exe.stdout.on( "data", ( cout ) => {
-            callback( cout.toString() );
-        } );
+        } catch( fault ) {
+            console.log( 
+                "\x1b[31mEngine returned: %d\nWhat():\n%s\x1b[37m",
+                fault.status,
+                fault.stderr.toString()
+             );
 
-        exe.stderr.on( "data", ( cerr ) => {
-            console.log( `Engine cerr'd: "${ cerr }".` );
-        } );
-        
-        exe.on( "exit", ( ret ) => {
-            if( ret == 0 ) return;
-
-            console.log( `Engine returned: "${ ret }".` );
-        } ); 
+            return "ENGINE_FAULT";
+        }
     }
 
     /**
@@ -337,27 +402,21 @@ class Engine {
                 break; }
 
             case INBOUND_VOICE_PLAY: {
-                let voice = this.voice_in( guild );
+                let voice = this.voice_in( ins.at( 0 ) );
 
                 if( !voice ) break;
 
-                voice.play( ins.at( 0 ) );
+                voice.play( ins.at( 1 ) );
 
 
                 break; }
 
             
 
-            case INBOUND_AUTO_VOICE_PLAY: {
-                this.voices.forEach( voice => {
-                    voice.play( ins.at( 0 ) );
-                } );
-
-                
-                xtra.delay = parseInt( ins.at( 1 ) );
+            case INBOUND_TICK_GUILD_SET: {
+                xtra.delay = parseInt( ins.at( 0 ) );
 
                 xtra.unlock();
-
 
                 break; }
         }
@@ -372,11 +431,11 @@ class Engine {
      @param { Guild } guild 
      @returns { Voice }
     **/
-    voice_in( guild ) {
+    voice_in( guild_id ) {
         let found = null;
 
         this.voices.forEach( ( voice ) => {
-            if( voice.guild.id == guild.id )
+            if( voice.guild.id == guild_id )
                 found = voice;
         } );
 
@@ -386,8 +445,15 @@ class Engine {
 //#endregion Utility
 
 
-    main_thread = async ( args ) => { 
+    guilds_launch_threads = () => {
+        this.client.guilds.cache.forEach( guild => {
+            this.guild_thread( guild );
+        } );
+    }
+
+    guild_thread = async ( guild ) => {
         let tick = {
+            guild: guild,
             delay: 6,
             unlock: null
         };
@@ -400,20 +466,8 @@ class Engine {
             let sync = new Promise( resolve => {
                 tick.unlock = resolve;
             } );
-            
-            this.run_engine( 
-                [
-                    OUTBOUND_TICK
-                ],
-    
-                ( cout ) => {
-                    console.log(
-                        `\nTick at ${ new Date().toLocaleTimeString() }. Engine inbound: \n"${ cout }".`
-                    );
 
-                    this.execute_chain( cout, null, null, tick );
-                }
-            );
+            this.on_tick( tick );
 
             await sync;
         }

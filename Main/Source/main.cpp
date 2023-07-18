@@ -88,7 +88,7 @@ public:
             GUILDS_PATH_AUTO_VOICE_PLAYS,
 
             [ & ] ( std :: string& sound, double& prob ) -> void {
-                if( sound.empty() ) 
+                if( sound.empty() )
                     return;
 
                 pairs.emplace_back( std :: move( sound ), prob );
@@ -98,10 +98,14 @@ public:
         return pairs;
     }
 
-    void voice_auto_plays_to( const Voice_auto_plays_pairs& pairs ) {
+    void voice_auto_plays_to( Voice_auto_plays_pairs& pairs ) {
         std :: stringstream formated{};
 
-        for( const auto& pair : pairs )
+        std :: sort( pairs.begin(), pairs.end(), [] ( auto& pair1, auto& pair2 ) -> bool {
+            return pair1.second > pair2.second;
+        } );
+
+        for( auto& pair : pairs )
             formated << pair.first << ' ' << pair.second << '\n';
 
         File :: overwrite(
@@ -111,15 +115,17 @@ public:
         );
     }
 
-    void voice_auto_plays_calibrate( double accumulated, Voice_auto_plays_pairs& pairs ) {
-        for( auto& pair : pairs )
-            accumulated += pair.second;
+    void voice_auto_plays_calibrate( double prob, Voice_auto_plays_pairs& pairs ) {
+        double acc = 0.0;
 
-        if( accumulated <= 1.0 ) 
+        for( auto& pair : pairs )
+            acc += pair.second;
+
+        if( prob + acc <= 1.0 )
             return;
 
-        for( auto& pair : pairs ) 
-            pair.second /= accumulated;
+        for( auto& pair : pairs )
+            pair.second *= ( 1.0 - prob );
     }
 
 };
@@ -387,6 +393,8 @@ public:
     COMMAND_BRANCH( voice_play ) {
         std :: cout
             << OUTBOUND_VOICE_PLAY_L_S
+            << guild.id()
+            << OUTBOUND_LOW_SPLIT
             << Sound :: path_of( ins.at( 0 ) );
     }
 
@@ -412,7 +420,7 @@ public:
 
             description: accumulated,
 
-            color: "5D3FD3",
+            color: EMBEDS_COLOR_INFO,
 
             image: "vinyl_purple.png"
         }.outbound();
@@ -471,7 +479,7 @@ public:
                     << static_cast< double >( Settings :: voice_hi_wait() ) / 1000.0
                     << "** seconds before saying hi!",
 
-                color: "5D3FD3"
+                color: EMBEDS_COLOR_INFO
             }.outbound();
         }
 
@@ -500,7 +508,7 @@ public:
                     Stream{}
                     << "This guild's prefix is \"" << guild.prefix() << "\".",
 
-                color: "5D3FD3"
+                color: EMBEDS_COLOR_INFO
             }.outbound();
         }
 
@@ -526,9 +534,9 @@ public:
 
 
         auto pairs = guild.voice_auto_plays();
-        
 
-        auto prob = ins.max< double >(); 
+
+        auto prob = ins.max< double >();
 
         if( !prob.has_value() ) {
             std :: cout
@@ -547,6 +555,19 @@ public:
         }
 
 
+        if(
+            auto itr
+            =
+            std :: find_if( pairs.begin(), pairs.end(), [ & ] ( const auto& pair ) -> bool {
+                return pair.first == sound;
+            } );
+
+            itr != pairs.end()
+        ) {
+            pairs.erase( itr );
+        }
+
+
         guild.voice_auto_plays_calibrate( prob.value(), pairs );
 
         pairs.emplace_back( sound, prob.value() );
@@ -557,6 +578,34 @@ public:
         std :: cout
             << OUTBOUND_REPLY_MESSAGE_L_S
             << "First try";
+    }
+
+    COMMAND_BRANCH( guild_voice_auto_plays_show ) {
+        auto pairs = guild.voice_auto_plays();
+
+        if( pairs.empty() ) {
+            Embed{
+                title: "This guild has no voice auto plays.",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+
+            return;
+        }
+
+
+        std :: stringstream accumulated;
+
+        for( auto& pair : pairs )
+            accumulated << pair.first << " ---** " << pair.second << "**\n";
+
+        Embed{
+            title: "These are this guild's voice auto plays:",
+
+            description: accumulated.str(),
+
+            color: EMBEDS_COLOR_INFO
+        }.outbound();
     }
 
 public:
@@ -601,7 +650,7 @@ public:
                 Stream{}
                 << "Now I'm greeting you with \"" << name << "\".",
 
-            color: "5D3FD3"
+            color: EMBEDS_COLOR_INFO
         }.outbound();
     }
 
@@ -625,7 +674,7 @@ public:
                     Stream{}
                     << "Now I'm parting you with \"" << name << "\".",
 
-                color: "5D3FD3"
+                color: EMBEDS_COLOR_INFO
             }.outbound();
         }
 
@@ -755,7 +804,7 @@ public:
                 description:
                     Stream{} << ( rig_value >= 0.5 ? "Hehe" : "" ),
 
-                color: "5D3FD3"
+                color: EMBEDS_COLOR_INFO
 
             }.outbound();
         }
@@ -868,6 +917,7 @@ public:
         { 1062816732498115940ULL,  guild_prefix_set },
         { 2016015562653219627ULL,  guild_prefix_show },
         { 14632587987046264091ULL, guild_voice_auto_plays_add },
+        { 11115212484132745176ULL, guild_voice_auto_plays_show },
 
         { 4330606938181995941ULL,  user_credits_show },
         { 12382791774924742628ULL, user_voice_hi_set },
@@ -953,11 +1003,43 @@ public:
 class Tick {
 public:
     static void on_tick( Ref< Inbounds > ins ) {
+        ins.pop_front();
+
+        Guild guild{ ins.at( 0 ) };
+
+        ins.pop_front();
+
+
         std :: cout
-            << OUTBOUND_AUTO_VOICE_PLAY_L_S
-            << Sound :: path_of( "door" )
-            << OUTBOUND_LOW_SPLIT
-            << random() % 1200 + 600;
+            << OUTBOUND_TICK_GUILD_SET_L_S
+            << random() % 1200 + 600
+            << OUTBOUND_HIGH_SPLIT;
+
+
+        voice_auto_play( guild, ins );
+    }
+
+public:
+    static void voice_auto_play( Guild guild, Ref< Inbounds > ins ) {
+        constexpr int precision = 10000;
+        double        gauge     = random() % precision;
+        double        sum       = 0.0;
+
+        auto          pairs     = guild.voice_auto_plays();
+        auto          itr       = pairs.begin();
+
+        for( ; itr != pairs.end(); ++itr ) {
+            sum += itr -> second * precision;
+
+            if( gauge <= sum ) break;
+        }
+
+        if( itr == pairs.end() )
+            return;
+
+        ins.push_front( itr -> first );
+
+        Command :: voice_play( guild, {}, ins );
     }
 
 };
