@@ -4,7 +4,7 @@
 
 
 
-std :: random_device random = {};
+#define RAND rand()
 
 
 
@@ -578,6 +578,19 @@ public:
         std :: cout
             << OUTBOUND_REPLY_MESSAGE_L_S
             << "First try";
+
+
+        ins.for_each< std :: string, double >(
+            {
+                [] ( const std :: string& ) -> std :: string { return ""; },
+                [] ( std :: string& ) -> bool { return true; }
+            },
+            {
+                [] ( const std :: string& ) -> double { return 0.0; },
+                [] ( double& ) -> bool { return true; }
+            },
+            [] ( std :: string&, double& ) -> void {}
+        );
     }
 
     COMMAND_BRANCH( guild_voice_auto_plays_show ) {
@@ -685,88 +698,104 @@ public:
             RED = 1, BLACK = 2, GREEN = 4
         };
 
+        static constexpr std :: array< const char*, 3 > colors{ "red", "black", "green" };
+
     public:
         COMMAND_BRANCH( main ) {
-            auto color = _pull_color( ins );
+            const size_t credits = user.credits( guild );
 
-            if( !color ) {
-                std :: cout
+            auto result 
+            = 
+            ins.for_each< int, int64_t >(
+                {
+                    [] ( const std :: string& in ) -> int { 
+                        for( size_t idx = 0; idx <= 2; ++idx )
+                            if( in == colors[ idx ] )
+                                return std :: pow( 2, idx );
+
+                        return 0;
+                    },
+
+                    [] ( int& match ) -> bool {
+                        return match != 0;
+                    }
+                },
+
+                {
+                    [] ( const std :: string& in ) -> int64_t { 
+                        return std :: stoll( in ); 
+                    },
+
+                    [ & ] ( int64_t& match ) -> bool {
+                        return match <= credits && match >= 0;
+                    }
+                },
+
+                [ & ] ( int& gambled_color, int64_t& gambled_ammount ) -> void { 
+                    const auto land   = _roulette_spin( gambled_color );
+                    int64_t    acc = 0;
+
+                    if( gambled_color == _roulette_land_to_color( land ) )
+                        acc = gambled_ammount * ( land == 0 ? 13 : 1 );
+                    else
+                        acc = -gambled_ammount;
+
+
+                    user.credits_to( credits + acc, guild );
+
+
+                    Embed{
+                        title:
+                            Stream{}
+                            << "Landed on "
+                            << land
+                            << ".",
+
+                        description:
+                            Stream{}
+                            << acc
+                            << " credits for you sweetie.",
+
+                        color: ( [ & ] () -> const char* {
+                            switch( gambled_color ) {
+                                case RED: return "FF0000";
+                                case BLACK: return "000000";
+                                case GREEN: return "00FF00";
+                            }
+                        } )(),
+
+                        image: ( [ & ] () -> const char* {
+                            if( land == 0 )
+                                return "green.png";
+
+                            return land % 2 == 0 ? "red.png" : "black.png";
+                        } )()
+                    }.outbound();
+
+                    std :: cout << OUTBOUND_HIGH_SPLIT;
+                }
+            );
+
+            if( result.completed > 0 )
+                return;
+
+            switch( result.missing_at ) {
+                case 0: {
+                    std :: cout
                     << OUTBOUND_REPLY_MESSAGE_L_S
                     << "What color are you gambling on?";
 
-                return;
-            }
+                    return;
+                }
 
-
-            auto ammount = _pull_ammount( ins );
-
-            if( !ammount ) {
-                std :: cout
+                case 1: {
+                    std :: cout
                     << OUTBOUND_REPLY_MESSAGE_L_S
-                    << "How much are you gambling?";
+                    << "Might wanna double-check how much are you gambling.";
 
-                return;
+                    return;
+                }
             }
-
-            if( ammount.value() < 0 ) {
-                std :: cout
-                    << OUTBOUND_REPLY_MESSAGE_L_S
-                    << "Peak comedy...";
-
-                return;
-            }
-
-
-            const size_t credits = user.credits( guild );
-
-            if( ammount > credits ) {
-                std :: cout
-                    << OUTBOUND_REPLY_MESSAGE_L_S
-                    << "Might wanna check your wallet...";
-
-                return;
-            }
-
-
-            const auto land   = _roulette_spin( color.value() );
-            int64_t    result = 0;
-
-            if( color == _roulette_land_to_color( land ) )
-                result = ammount.value() * ( land == 0 ? 13 : 1 );
-            else
-                result = -ammount.value();
-
-
-            user.credits_to( credits + result, guild );
-
-
-            Embed{
-                title:
-                    Stream{}
-                    << "Landed on "
-                    << land
-                    << ".",
-
-                description:
-                    Stream{}
-                    << result
-                    << " credits for you sweetie.",
-
-                color: ( [ & ] () -> const char* {
-                    switch( color.value() ) {
-                        case RED: return "FF0000";
-                        case BLACK: return "000000";
-                        case GREEN: return "00FF00";
-                    }
-                } )(),
-
-                image: ( [ & ] () -> const char* {
-                    if( land == 0 )
-                        return "green.png";
-
-                    return land % 2 == 0 ? "red.png" : "black.png";
-                } )()
-            }.outbound();
         }
 
         COMMAND_BRANCH( rig_set ) {
@@ -853,10 +882,10 @@ public:
 
     private:
         static int _roulette_spin( int gambled_color ) {
-            int land = static_cast< int >( random() % 32 );
+            int land = static_cast< int >( RAND % 32 );
 
             if( _roulette_land_to_color( land ) == gambled_color )
-                if( random() % 100 < Settings :: Gamble :: rig() * 100 )
+                if( RAND % 100 < Settings :: Gamble :: rig() * 100 )
                     land = std :: clamp( land + 1, 0, 31 );
 
             return land;
@@ -1012,7 +1041,7 @@ public:
 
         std :: cout
             << OUTBOUND_TICK_GUILD_SET_L_S
-            << random() % 1200 + 600
+            << RAND % 1200 + 600
             << OUTBOUND_HIGH_SPLIT;
 
 
@@ -1022,7 +1051,7 @@ public:
 public:
     static void voice_auto_play( Guild guild, Ref< Inbounds > ins ) {
         constexpr int precision = 10000;
-        double        gauge     = random() % precision;
+        double        gauge     = RAND % precision;
         double        sum       = 0.0;
 
         auto          pairs     = guild.voice_auto_plays();
@@ -1055,6 +1084,9 @@ Event_map event_map = {
 
 
 int main( int arg_count, char* args[] ) {
+    srand( time( nullptr ) );
+
+
     Inbounds ins = {};
 
     for( int idx = 1; idx < arg_count; ++idx )

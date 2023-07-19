@@ -62,6 +62,84 @@ public:
         return first;
     }
 
+public:
+    struct For_each_result {
+        int   completed    = 0;
+        int   missing_at   = 0;
+    };
+
+public:
+    template< typename ...Args >
+    For_each_result for_each( 
+        std :: pair< 
+            std :: function< Args( const std :: string& ) >,
+            std :: function< bool( Args& ) >
+        >... builds,
+
+        std :: function< void( Args&... ) > op 
+    ) {
+        return _for_each< Args... >( builds..., op, std :: optional< Args >{}... );
+    }
+
+private:
+    template< typename ...Args >
+    For_each_result _for_each( 
+        std :: pair< 
+            std :: function< Args( const std :: string& ) >,
+            std :: function< bool( Args& ) >
+        >... builds,
+
+        std :: function< void( Args&... ) > op,
+
+        std :: optional< Args >... args
+    ) {
+        For_each_result result{};
+
+        while( true ) {
+            ( ( args = this -> _extract_match( builds ) ), ... );
+
+            if( ( ( ++result.missing_at && !args.has_value() ) || ... ) ) 
+                break;
+            
+            std :: invoke( op, args.value()... );
+
+            result.completed++;
+            result.missing_at = 0;
+        }
+
+        result.missing_at -= 1;
+
+        return result;
+    }
+
+    template< typename T >
+    std :: optional< T > _extract_match( 
+        std :: pair< 
+            std :: function< T( const std :: string& ) >,
+            std :: function< bool( T& ) >
+        > build
+    ) {
+        auto itr = this -> begin();
+
+        for( ; itr != this -> end(); ++itr ) {
+            try {
+                T entry = build.first( *itr );
+
+                if( !build.second( entry ) ) 
+                    continue;
+
+                this -> erase( itr );
+                
+                return std :: move( entry );
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return {};
+    }
+
 };
 
 

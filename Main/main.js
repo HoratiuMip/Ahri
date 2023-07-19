@@ -303,8 +303,7 @@ class Engine {
         try {
             return execFileSync( 
                 config.exe, 
-                args, 
-                { stdio: [ "ignore", "pipe", "pipe" ] } 
+                args
             ).toString();
 
         } catch( fault ) {
