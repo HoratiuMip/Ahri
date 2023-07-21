@@ -63,53 +63,58 @@ public:
     }
 
 public:
-    struct For_each_result {
-        int   completed    = 0;
-        int   missing_at   = 0;
+    class FE_payload : public std :: bitset< 32 > {
+    public:
+        int    done_count   = 0;
+        int    missing_at   = 0;
+        bool   abort        = false;
     };
 
 public:
     template< typename ...Args >
-    For_each_result for_each( 
+    FE_payload for_each( 
         std :: pair< 
             std :: function< Args( const std :: string& ) >,
             std :: function< bool( Args& ) >
         >... builds,
 
-        std :: function< void( Args&... ) > op 
+        std :: function< void( Args&..., FE_payload& ) > op 
     ) {
         return _for_each< Args... >( builds..., op, std :: optional< Args >{}... );
     }
 
 private:
     template< typename ...Args >
-    For_each_result _for_each( 
+    FE_payload _for_each( 
         std :: pair< 
             std :: function< Args( const std :: string& ) >,
             std :: function< bool( Args& ) >
         >... builds,
 
-        std :: function< void( Args&... ) > op,
+        std :: function< void( Args&..., FE_payload& ) > op,
 
         std :: optional< Args >... args
     ) {
-        For_each_result result{};
+        FE_payload payload{};
 
         while( true ) {
+            if( payload.abort )
+                break;
+
             ( ( args = this -> _extract_match( builds ) ), ... );
 
-            if( ( ( ++result.missing_at && !args.has_value() ) || ... ) ) 
+            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) ) 
                 break;
             
-            std :: invoke( op, args.value()... );
+            std :: invoke( op, args.value()..., payload );
 
-            result.completed++;
-            result.missing_at = 0;
+            payload.done_count++;
+            payload.missing_at = 0;
         }
 
-        result.missing_at -= 1;
+        payload.missing_at -= 1;
 
-        return result;
+        return payload;
     }
 
     template< typename T >

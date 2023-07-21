@@ -268,6 +268,10 @@ public:
                 << "Something went terribly wrong.";
 
             std :: cerr << '\n' << err.what();
+        } catch( ... ) {
+            std :: cout
+                << OUTBOUND_REPLY_MESSAGE_L_S
+                << "If this message is sent, it is bad.";
         }
     }
 
@@ -327,12 +331,33 @@ public:
 
 public:
     COMMAND_BRANCH( what ) {
-        if( !ins.empty() )
-            if( Sound :: exists( ins.at( 0 ) ) ) {
-                voice_play( guild, user, ins );
+        if( !ins.empty() ) {
+            static auto try_play = [ & ] ( const std :: string& sound ) -> bool {
+                if( !Sound :: exists( sound ) )
+                    return false;
 
+                ins.push_front( std :: move( sound ) );
+
+                Command :: voice_play( guild, user, ins );
+
+                return true;
+            };
+
+            std :: string sound = std :: move( ins.at( 0 ) );
+
+            if( try_play( sound ) )
                 return;
+
+            ins.pop_front();
+
+            for( auto& sound_part : ins ) {
+                sound += '_';
+                sound += sound_part;
+
+                if( try_play( sound ) )
+                    return;
             }
+        }
 
 
         std :: cout
@@ -370,7 +395,7 @@ public:
 
         ins.emplace_front( "kiss_1" );
 
-        voice_play( guild, user, ins );
+        Command :: voice_play( guild, user, ins );
     }
 
     COMMAND_BRANCH( pet ) {
@@ -398,6 +423,12 @@ public:
             << Sound :: path_of( ins.at( 0 ) );
     }
 
+    COMMAND_BRANCH( voice_stop ) {
+        std :: cout
+            << OUTBOUND_VOICE_STOP_L_S
+            << guild.id();
+    }
+
     COMMAND_BRANCH( voice_sounds_show ) {
         std :: string path{};
 
@@ -410,16 +441,19 @@ public:
 
             size_t slash_end = path.find_last_of( '\\' ) + 1;
 
-            accumulated += "\n**\"";
+            accumulated += "\n\n**\"";
             accumulated += path.substr( slash_end, path.size() - slash_end - 4 );
             accumulated += "\"**";
         }
 
         Embed{
-            title: "These are all the sounds I got:",
+            title: "DJ Ahri spinnin' these bad boys:",
 
-            description: accumulated,
-
+            description: 
+                accumulated
+                +=
+                "\n\nYou may write the sounds with space instead of underscore.",
+                
             color: EMBEDS_COLOR_INFO,
 
             image: "vinyl_purple.png"
@@ -578,19 +612,6 @@ public:
         std :: cout
             << OUTBOUND_REPLY_MESSAGE_L_S
             << "First try";
-
-
-        ins.for_each< std :: string, double >(
-            {
-                [] ( const std :: string& ) -> std :: string { return ""; },
-                [] ( std :: string& ) -> bool { return true; }
-            },
-            {
-                [] ( const std :: string& ) -> double { return 0.0; },
-                [] ( double& ) -> bool { return true; }
-            },
-            [] ( std :: string&, double& ) -> void {}
-        );
     }
 
     COMMAND_BRANCH( guild_voice_auto_plays_show ) {
@@ -704,7 +725,7 @@ public:
         COMMAND_BRANCH( main ) {
             const size_t credits = user.credits( guild );
 
-            auto result 
+            auto payload 
             = 
             ins.for_each< int, int64_t >(
                 {
@@ -731,7 +752,11 @@ public:
                     }
                 },
 
-                [ & ] ( int& gambled_color, int64_t& gambled_ammount ) -> void { 
+                [ & ] ( 
+                    int& gambled_color, 
+                    int64_t& gambled_ammount, 
+                    Inbounds :: FE_payload& payload 
+                ) -> void { 
                     const auto land   = _roulette_spin( gambled_color );
                     int64_t    acc = 0;
 
@@ -776,10 +801,10 @@ public:
                 }
             );
 
-            if( result.completed > 0 )
+            if( payload.done_count > 0 )
                 return;
 
-            switch( result.missing_at ) {
+            switch( payload.missing_at ) {
                 case 0: {
                     std :: cout
                     << OUTBOUND_REPLY_MESSAGE_L_S
@@ -839,48 +864,6 @@ public:
         }
 
     private:
-        static std :: optional< int > _pull_color( Ref< Inbounds > ins ) {
-            std :: bitset< 3 > colors{};
-
-            for( size_t idx = 0; idx < 3; ++idx )
-                colors[ idx ] = std :: ranges :: find(
-                    ins,
-                    ( [ & ] () -> const char* {
-                        switch( idx ) {
-                            case 0: return "red";
-                            case 1: return "black";
-                            case 2: return "green";
-                        }
-                    } )()
-                ) != ins.end();
-
-
-            if( colors.count() != 1 )
-                return {};
-
-            return static_cast< int >( colors.to_ulong() );
-        }
-
-        static std :: optional< int64_t > _pull_ammount( Ref< Inbounds > ins ) {
-            std :: optional< int64_t > max{};
-
-            for( auto& in : ins ) {
-                try {
-                    if(
-                        int64_t value = std :: stoll( in );
-                        value > max.value_or( std :: numeric_limits< int64_t > :: min() )
-                    )
-                        max = value;
-
-                } catch( ... ) {
-                    continue;
-                }
-            }
-
-            return max;
-        }
-
-    private:
         static int _roulette_spin( int gambled_color ) {
             int land = static_cast< int >( RAND % 32 );
 
@@ -926,7 +909,8 @@ public:
         { 15, { "rig" } },
         { 16, { "push", "add", "+" } },
         { 17, { "pop", "sub", "-", "erase", "remove" } },
-        { 18, { "auto" } }
+        { 18, { "auto" } },
+        { 19, { "stop" } }
     };
 
     inline static Map map = {
@@ -938,6 +922,7 @@ public:
         { 7492372067882396056ULL,  voice_connect },
         { 3435728378537700265ULL,  voice_disconnect },
         { 9340956479027659370ULL,  voice_play },
+        { 15925390277482132049ULL, voice_stop },
         { 15169021593429937846ULL, voice_sounds_show },
 
         { 6865420363795655716ULL, settings_voice_wait_set },

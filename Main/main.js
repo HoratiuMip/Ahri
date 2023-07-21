@@ -51,8 +51,7 @@ const INBOUND_REPLY_EMBED = "reply_embed"
 const INBOUND_VOICE_CONNECT = "voice_connect";
 const INBOUND_VOICE_DISCONNECT = "voice_disconnect";
 const INBOUND_VOICE_PLAY = "voice_play";
-
-const INBOUND_AUTO_VOICE_PLAY = "auto_voice_play";
+const INBOUND_VOICE_STOP = "voice_stop";
 
 
 const INBOUND_TICK_GUILD_SET = "tick_guild_set";
@@ -119,8 +118,12 @@ class Voice {
     /**
     @param { string } path 
     **/
-    play( path ) {
+    play = ( path ) => {
         this.audio.play( createAudioResource( path ) );
+    }
+
+    stop = () => {
+        this.audio.stop();
     }
 
 };
@@ -407,6 +410,16 @@ class Engine {
 
                 voice.play( ins.at( 1 ) );
 
+
+                break; }
+
+            case INBOUND_VOICE_STOP: {
+                let voice = this.voice_in( ins.at( 0 ) );
+
+                if( !voice ) break;
+
+                voice.stop();
+                
 
                 break; }
 
