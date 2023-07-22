@@ -115,17 +115,19 @@ public:
         );
     }
 
-    void voice_auto_plays_calibrate( double prob, Voice_auto_plays_pairs& pairs ) {
+    bool voice_auto_plays_calibrate( double prob, Voice_auto_plays_pairs& pairs ) {
         double acc = 0.0;
 
         for( auto& pair : pairs )
             acc += pair.second;
 
         if( prob + acc <= 1.0 )
-            return;
+            return false;
 
         for( auto& pair : pairs )
-            pair.second *= ( 1.0 - prob );
+            pair.second *= ( 1.0 - prob ) / acc;
+
+        return true;
     }
 
 };
@@ -219,7 +221,7 @@ public:
 public:
     void outbound() {
         std :: cout
-            << OUTBOUND_REPLY_EMBED_L_S
+            << OUTBOUND_REPLY_EMBED
             << ( title.empty() ? " " : title )
 
             << OUTBOUND_LOW_SPLIT
@@ -264,13 +266,13 @@ public:
 
         } catch( std :: runtime_error& err ) {
             std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
+                << OUTBOUND_REPLY_MESSAGE
                 << "Something went terribly wrong.";
 
             std :: cerr << '\n' << err.what();
         } catch( ... ) {
             std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
+                << OUTBOUND_REPLY_MESSAGE
                 << "If this message is sent, it is bad.";
         }
     }
@@ -361,7 +363,7 @@ public:
 
 
         std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
+            << OUTBOUND_REPLY_MESSAGE
             << "Whaaaat are you sayinnnnn";
     }
 
@@ -372,7 +374,7 @@ public:
             !ins.at( 0 ).ends_with( '\"' )
         ) {
             std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
+                << OUTBOUND_REPLY_MESSAGE
                 << "Enclose the string in double quotes first.";
 
             return;
@@ -381,17 +383,16 @@ public:
         ins.at( 0 ) = ins.at( 0 ).substr( 1, ins.at( 0 ).size() - 2 );
 
         std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
+            << OUTBOUND_REPLY_MESSAGE
             << std :: hash< std :: remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
     };
 
 public:
     COMMAND_BRANCH( kiss ) {
         std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
+            << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/heart-ahri-love-gif-18791933";
 
-        std :: cout << OUTBOUND_HIGH_SPLIT;
 
         ins.emplace_front( "kiss_1" );
 
@@ -400,7 +401,7 @@ public:
 
     COMMAND_BRANCH( pet ) {
         std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
+            << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
@@ -417,7 +418,7 @@ public:
 
     COMMAND_BRANCH( voice_play ) {
         std :: cout
-            << OUTBOUND_VOICE_PLAY_L_S
+            << OUTBOUND_VOICE_PLAY
             << guild.id()
             << OUTBOUND_LOW_SPLIT
             << Sound :: path_of( ins.at( 0 ) );
@@ -425,7 +426,7 @@ public:
 
     COMMAND_BRANCH( voice_stop ) {
         std :: cout
-            << OUTBOUND_VOICE_STOP_L_S
+            << OUTBOUND_VOICE_STOP
             << guild.id();
     }
 
@@ -547,71 +548,117 @@ public:
         }
 
     COMMAND_BRANCH( guild_voice_auto_plays_add ) {
-        std :: string_view sound{};
+        enum Payload_info {
+            PROBS_CALIBD
+        };
 
 
-        for( auto& in : ins )
-            if( Sound :: exists( in ) ) {
-                sound = in;
+        Stream embed_desc_acc{};
 
-                goto Label_sound_found;
+        auto payload
+        =
+        ins.for_each< std :: string, double >(
+            {
+                [] ( const std :: string& in ) -> std :: string { 
+                    return in; 
+                },
+
+                [] ( std :: string& match ) -> bool {
+                    return Sound :: exists( match );
+                }
+            },
+
+            {
+                [] ( const std :: string& in ) -> double {
+                    return std :: stod( in );
+                },
+
+                [] ( double& match ) -> bool {
+                    bool in_range = match >= 0.0 && match <= 1.0;
+
+                    return in_range;
+                }
+            },
+
+            [ & ] ( std :: string& sound, double& prob, auto& payload ) -> void {
+                auto pairs = guild.voice_auto_plays();
+
+                std :: erase_if( pairs, [ & ] ( auto& pair ) -> bool {
+                    pair.first == sound;
+                } );
+
+
+                payload[ PROBS_CALIBD ] 
+                = 
+                payload[ PROBS_CALIBD ] | guild.voice_auto_plays_calibrate( prob, pairs );
+
+
+                pairs.emplace_back( sound, prob );
+
+                guild.voice_auto_plays_to( pairs );
+
+                embed_desc_acc << "\n" << sound << "  |  " << prob;
             }
+        );
 
-        std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "What sound sweetie?";
-
-        return;
-
-
-        Label_sound_found:
+        
+        if( payload.done_count != 0 ) goto L_OK;
+        if( payload.missing_at == 0 ) goto L_NO_SOUND;
+        if( payload.missing_at == 1 ) goto L_NO_PROB;
 
 
-        auto pairs = guild.voice_auto_plays();
+        L_OK: {
+            if( payload[ PROBS_CALIBD ] )
+                embed_desc_acc 
+                << "\n\n" 
+                << "Probabilities did not account to 1, therefore they have been calibrated.";
 
+            Embed{
+                title:
+                    Stream{}
+                    << "Pushed "
+                    << payload.done_count
+                    << " sound"
+                    << ( payload.done_count == 1 ? "" : "s" ) 
+                    << " to the guild's auto plays.",
 
-        auto prob = ins.max< double >();
+                description: embed_desc_acc,
 
-        if( !prob.has_value() ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "A probability perhaps?";
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
 
             return;
         }
 
-        if( prob.value() < 0.0 ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE_L_S
-                << "Funneh eh?";
+        L_NO_SOUND: {
+            std :: cout 
+                << OUTBOUND_REPLY_MESSAGE
+                << "Double-check the sound cutey.";
 
             return;
         }
 
+        L_NO_PROB: {
+            std :: cout 
+                << OUTBOUND_REPLY_MESSAGE
+                << "Need a probability between 0 and 1.";
 
-        if(
-            auto itr
-            =
-            std :: find_if( pairs.begin(), pairs.end(), [ & ] ( const auto& pair ) -> bool {
-                return pair.first == sound;
-            } );
-
-            itr != pairs.end()
-        ) {
-            pairs.erase( itr );
+            return;
         }
+    }
 
+    COMMAND_BRANCH( guild_voice_auto_plays_clear ) {
+        File :: overwrite(
+            GUILDS_PATH_MASTER + '\\' + guild.id(),
+            GUILDS_PATH_AUTO_VOICE_PLAYS,
+            ""
+        );
 
-        guild.voice_auto_plays_calibrate( prob.value(), pairs );
+        Embed{
+            title: "Cleared this guild's voice auto plays.",
 
-        pairs.emplace_back( sound, prob.value() );
-
-        guild.voice_auto_plays_to( pairs );
-
-
-        std :: cout
-            << OUTBOUND_REPLY_MESSAGE_L_S
-            << "First try";
+            color: EMBEDS_COLOR_INFO
+        }.outbound();
     }
 
     COMMAND_BRANCH( guild_voice_auto_plays_show ) {
@@ -796,8 +843,6 @@ public:
                             return land % 2 == 0 ? "red.png" : "black.png";
                         } )()
                     }.outbound();
-
-                    std :: cout << OUTBOUND_HIGH_SPLIT;
                 }
             );
 
@@ -807,7 +852,7 @@ public:
             switch( payload.missing_at ) {
                 case 0: {
                     std :: cout
-                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << OUTBOUND_REPLY_MESSAGE
                     << "What color are you gambling on?";
 
                     return;
@@ -815,7 +860,7 @@ public:
 
                 case 1: {
                     std :: cout
-                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << OUTBOUND_REPLY_MESSAGE
                     << "Might wanna double-check how much are you gambling.";
 
                     return;
@@ -841,7 +886,7 @@ public:
 
             if( rig_value == -1.0 ) {
                 std :: cout
-                    << OUTBOUND_REPLY_MESSAGE_L_S
+                    << OUTBOUND_REPLY_MESSAGE
                     << "I need something between 0.0 and 1.0...";
 
                 return;
@@ -901,7 +946,7 @@ public:
         { 7, { "play" } },
         { 8, { "set", "change", "=", "make" } },
         { 9, { "prefix" } },
-        { 10, { "hi", "hello", "greet", "salut" } },
+        { 10, { "hi", "hello", "greet" } },
         { 11, { "bye", "cya" } },
         { 12, { "wait", "hold" } },
         { 13, { "sounds", "soundboard" } },
@@ -910,7 +955,8 @@ public:
         { 16, { "push", "add", "+" } },
         { 17, { "pop", "sub", "-", "erase", "remove" } },
         { 18, { "auto" } },
-        { 19, { "stop" } }
+        { 19, { "stop" } },
+        { 20, { "clear" } }
     };
 
     inline static Map map = {
@@ -931,6 +977,7 @@ public:
         { 1062816732498115940ULL,  guild_prefix_set },
         { 2016015562653219627ULL,  guild_prefix_show },
         { 14632587987046264091ULL, guild_voice_auto_plays_add },
+        { 8901744138937185971ULL,  guild_voice_auto_plays_clear },
         { 11115212484132745176ULL, guild_voice_auto_plays_show },
 
         { 4330606938181995941ULL,  user_credits_show },
@@ -1025,9 +1072,8 @@ public:
 
 
         std :: cout
-            << OUTBOUND_TICK_GUILD_SET_L_S
-            << RAND % 1200 + 600
-            << OUTBOUND_HIGH_SPLIT;
+            << OUTBOUND_TICK_GUILD_SET
+            << RAND % 1200 + 600;
 
 
         voice_auto_play( guild, ins );
@@ -1069,7 +1115,17 @@ Event_map event_map = {
 
 
 int main( int arg_count, char* args[] ) {
-    srand( time( nullptr ) );
+    using srand_t = unsigned int;
+
+    srand( 
+        static_cast< srand_t >(
+            std :: chrono :: high_resolution_clock :: now().time_since_epoch().count()
+            %
+            static_cast< srand_t >( 
+                std :: pow( 10U, std :: numeric_limits< srand_t > :: digits10 )
+            )
+        )
+     );
 
 
     Inbounds ins = {};
