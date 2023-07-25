@@ -1,10 +1,494 @@
-#include "std_includes.cpp"
-#include "quints.cpp"
-#include "utility.cpp"
+#pragma region INCLUDES
+
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+
+#include <chrono>
+#include <thread>
+
+#include <string>
+#include <string_view>
+#include <sstream>
+
+#include <functional>
+
+#include <map>
+#include <list>
+#include <deque>
+#include <vector>
+#include <set>
+#include <bitset>
+
+#include <ranges>
+
+#include <optional>
+
+#include <random>
+
+#include <algorithm>
+#include <utility>
+
+#pragma endregion INCLUDES
 
 
 
-#define RAND rand()
+#pragma region QUINTS
+
+#define OUTBOUND_LOW_SPLIT "||__LOW_SPLIT__||"
+#define OUTBOUND_HIGH_SPLIT "||__HIGH_SPLIT__||"
+
+
+#define OUTBOUND_SCRIPT "script"
+#define OUTBOUND_SCRIPT_L_S OUTBOUND_SCRIPT OUTBOUND_LOW_SPLIT
+
+
+#define OUTBOUND_REPLY_MESSAGE OUTBOUND_HIGH_SPLIT "reply_message" OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_REPLY_EMBED OUTBOUND_HIGH_SPLIT "reply_embed" OUTBOUND_LOW_SPLIT
+
+
+#define OUTBOUND_VOICE_CONNECT OUTBOUND_HIGH_SPLIT "voice_connect" OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_VOICE_DISCONNECT OUTBOUND_HIGH_SPLIT "voice_disconnect" OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_VOICE_PLAY OUTBOUND_HIGH_SPLIT "voice_play" OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_VOICE_STOP OUTBOUND_HIGH_SPLIT "voice_stop" OUTBOUND_LOW_SPLIT
+
+
+#define OUTBOUND_TICK_GUILD_SET OUTBOUND_HIGH_SPLIT "tick_guild_set" OUTBOUND_LOW_SPLIT
+
+
+
+#define INBOUND_MESSAGE "message"
+#define INBOUND_VOICE_UPDATE "voice_update"
+#define INBOUND_TICK "tick"
+
+
+
+#define SETTINGS_PATH_MASTER std :: string{ ".\\Data\\Settings" }
+
+#define SETTINGS_PATH_VOICE_HI_WAIT "voice_hi_wait.arh"
+
+#define SETTINGS_PATH_GAMBLE_RIG "gamble_rig.arh"
+
+
+
+#define IMAGES_EMBEDS_PATH_MASTER std :: string{ ".\\Data\\Images\\Embeds" }
+
+
+
+#define EMBEDS_COLOR_INFO "5D3FD3"
+
+
+
+#define GUILDS_DEFAULT_PREFIX "."
+
+#define GUILDS_PATH_MASTER std :: string{ ".\\Data\\Guilds" }
+#define GUILDS_PATH_PREFIX "prefix.arh"
+#define GUILDS_PATH_AUTO_VOICE_PLAYS "auto_voice_plays.arh"
+
+
+
+#define USERS_PATH_MASTER std :: string{ ".\\Data\\Users" }
+#define USERS_PATH_VOICE_HI "voice_hi.arh"
+#define USERS_PATH_VOICE_BYE "voice_bye.arh"
+#define USERS_PATH_GUILD_CREDITS "credits.arh"
+#define USERS_PATH_GUILD "Guilds"
+
+
+
+#define SOUNDS_PATH_MASTER std :: string{ ".\\Data\\Audio" }
+
+#pragma endregion QUINTS
+
+
+
+std :: random_device random;
+#define RAND random()
+
+
+
+class Inbounds : public std :: deque< std :: string > {
+public:
+    using Base = std :: deque< std :: string >;
+
+public:
+    using Base :: Base;
+
+public:
+    static constexpr size_t   mandatory_ins_count   = 5;
+
+public:
+    Inbounds() = default;
+
+    Inbounds( int arg_count, char** args ) {
+        for( int idx = 0; idx < mandatory_ins_count; ++idx )
+            _out_refs[ idx ] = args[ idx + 1 ];
+
+        for( int idx = mandatory_ins_count + 1; idx < arg_count; ++idx )
+            this -> emplace_back( args[ idx ] );
+    }
+
+private:
+    enum _OUT_REFS_ACCESS_IDX {
+        _EVENT, _GUILD_ID, _VOICE_ID, _USER_ID, _USER_VOICE_ID
+    };
+
+    std :: string   _out_refs[ mandatory_ins_count ]   = {};
+
+public:
+    auto& event() const {
+        return _out_refs[ _EVENT ];
+    }
+
+    auto& guild_id() const {
+        return _out_refs[ _GUILD_ID ];
+    }
+
+    auto& voice_id() const {
+        return _out_refs[ _VOICE_ID ];
+    }
+
+    auto& user_id() const {
+        return _out_refs[ _USER_ID ];
+    }
+
+    auto& user_voice_id() const {
+        return _out_refs[ _USER_VOICE_ID ];
+    }
+ 
+
+public:
+    template< typename T >
+    requires( std :: is_arithmetic_v< T > )
+    auto max() {
+        if constexpr( std :: is_same_v< int64_t, T > )
+            return _max< T >( std :: stoll );
+        else if constexpr( std :: is_same_v< double, T > )
+            return _max< T, size_t* >( std :: stod, nullptr );
+    }
+
+private:
+    template< typename T, typename ...Xtra_args >
+    requires( std :: is_arithmetic_v< T > )
+    std :: optional< T > _max( T ( *func )( const std :: string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
+        std :: optional< T > max{};
+
+        for( auto& in : *this ) {
+            try {
+                if(
+                    T value = std :: invoke( func, in, xtra_args... );
+                    value > max.value_or( std :: numeric_limits< T > :: min() )
+                )
+                    max = value;
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return max;
+    }
+
+public:
+    auto first_str( const std :: vector< std :: string_view >& strs ) {
+        std :: string_view first = {};
+
+        for( auto& in : *this ) {
+            if(
+                auto itr = std :: find( strs.begin(), strs.end(), in );
+                itr != strs.end()
+            ) {
+                first = *itr;
+
+                break;
+            }
+        }
+
+        return first;
+    }
+
+public:
+    class FE_payload : public std :: bitset< 32 > {
+    public:
+        int    done_count   = 0;
+        int    missing_at   = 0;
+        bool   abort        = false;
+    };
+
+public:
+    template< typename ...Args >
+    FE_payload for_each( 
+        std :: pair< 
+            std :: function< Args( const std :: string& ) >,
+            std :: function< bool( Args& ) >
+        >... builds,
+
+        std :: function< void( Args&..., FE_payload& ) > op 
+    ) {
+        return _for_each< Args... >( builds..., op, std :: optional< Args >{}... );
+    }
+
+private:
+    template< typename ...Args >
+    FE_payload _for_each( 
+        std :: pair< 
+            std :: function< Args( const std :: string& ) >,
+            std :: function< bool( Args& ) >
+        >... builds,
+
+        std :: function< void( Args&..., FE_payload& ) > op,
+
+        std :: optional< Args >... args
+    ) {
+        FE_payload payload{};
+
+        while( true ) {
+            if( payload.abort )
+                break;
+
+            ( ( args = this -> _extract_match( builds ) ), ... );
+
+            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) ) 
+                break;
+            
+            std :: invoke( op, args.value()..., payload );
+
+            payload.done_count++;
+            payload.missing_at = 0;
+        }
+
+        payload.missing_at -= 1;
+
+        return payload;
+    }
+
+    template< typename T >
+    std :: optional< T > _extract_match( 
+        std :: pair< 
+            std :: function< T( const std :: string& ) >,
+            std :: function< bool( T& ) >
+        > build
+    ) {
+        auto itr = this -> begin();
+
+        for( ; itr != this -> end(); ++itr ) {
+            try {
+                T entry = build.first( *itr );
+
+                if( !build.second( entry ) ) 
+                    continue;
+
+                this -> erase( itr );
+                
+                return std :: move( entry );
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return {};
+    }
+
+};
+
+
+
+template< typename T > 
+using Ref = T&;
+
+using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
+
+#define GUI_OP( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
+
+
+
+#pragma region BOOSTERS
+
+std :: string operator + ( 
+    const std :: string& rhs, 
+    const std :: string_view& lhs 
+) {
+    return rhs + lhs.data();
+}
+
+std :: string operator + ( 
+    const std :: string_view& rhs, 
+    const std :: string_view& lhs 
+) {
+    return std :: string{ rhs.data() } + lhs.data();
+}
+
+std :: string operator + ( 
+    const char* rhs, 
+    const std :: string_view& lhs 
+) {
+    return std :: string{ rhs } + lhs.data();
+}
+
+std :: string operator + ( 
+    const std :: string_view& rhs, 
+    const char* lhs 
+) {
+    return std :: string{ rhs.data() } + lhs;
+}
+
+std :: string operator + ( 
+    const std :: string_view& rhs, 
+    const char& lhs 
+) {
+    return std :: string{ rhs.data() } + lhs;
+}
+
+
+
+class Has_id {
+public:
+    using type = std :: string_view;
+
+public:
+    Has_id() = default;
+
+    Has_id( type id )
+        : _id{ id }
+    {}
+
+protected:
+    type   _id   = {};
+
+public:
+    type id() const {
+        return _id;
+    }
+
+};
+
+
+
+class Sound {
+public:
+    static std :: string path_of( const std :: string_view& name ) {
+        return SOUNDS_PATH_MASTER + '\\' + name + ".mp3";
+    }
+
+    static bool exists( const std :: string_view& name ) {
+        return static_cast< bool >( std :: ifstream{ Sound :: path_of( name ) } );
+    }
+
+};
+
+
+
+class File {
+public:
+    static void overwrite( 
+        const std :: string_view& dir, 
+        const std :: string_view& name,
+        const auto& content 
+    ) {
+        auto path = dir + '\\' + name;
+
+        std :: ofstream file{ path };
+
+        if( !file ) {
+            std :: filesystem :: create_directories( dir );
+
+            file.open( path );
+        }
+        
+        file << content;
+    }
+
+    template< typename T >
+    static T read(
+        const std :: string_view& dir, 
+        const std :: string_view& name,
+        const T& default_content = {}
+    ) {
+        auto path = dir + '\\' + name;
+
+        std :: ifstream file{ path };
+
+        if( !file ) {
+            File :: overwrite( dir, name, default_content );
+
+            return default_content;
+        }
+
+        T content{};
+
+        file >> content;
+
+        return content;
+    }
+
+public:
+    template< typename ...Args >
+    static void for_each( 
+        const std :: string_view& dir,
+        const std :: string_view& name,
+        const auto& op
+    ) {
+        _for_each< Args... >(
+            dir, name, op,
+            Args{}...
+        );
+    }
+
+private:
+    template< typename ...Args >
+    static void _for_each( 
+        const std :: string_view& dir,
+        const std :: string_view& name,
+        const auto& op,
+        Args... args
+    ) {
+        auto path = dir + '\\' + name; 
+
+        std :: ifstream file( path );
+
+        if( !file ) {
+            File :: overwrite( dir, name, "" );
+
+            return;
+        }
+
+
+        while( !file.eof() ) {
+            ( ( file >> args ),... );
+
+            op( args... );
+        }
+    }
+
+};
+
+
+
+class Stream : public std :: ostringstream {
+public:
+    using Base = std :: ostringstream;
+
+public:
+    Stream() = default;
+
+    using Base :: Base;
+
+public:
+    operator std :: string() const {
+        return this -> str();
+    }
+
+    operator std :: string_view () const {
+        return this -> view();
+    }
+
+};
+
+#pragma endregion BOOSTERS
 
 
 
@@ -50,6 +534,8 @@ public:
 };
 
 
+
+#pragma region INBOUND_STRUCTURES
 
 class Guild : public Has_id {
 public:
@@ -209,7 +695,10 @@ public:
 
 };
 
+#pragma endregion INBOUND_STRUCTURES
 
+
+#pragma region OUTBOUND_STRUCTURES
 
 struct Embed {
 public:
@@ -235,6 +724,8 @@ public:
     }
 
 };
+
+#pragma endregion OUTBOUND_STRUCTURES
 
 
 
@@ -413,7 +904,8 @@ public:
 
     GUI_OP( voice_disconnect ) {
         std :: cout
-            << OUTBOUND_VOICE_DISCONNECT;
+            << OUTBOUND_VOICE_DISCONNECT
+            << guild.id();
     }
 
     GUI_OP( voice_play ) {
@@ -988,6 +1480,8 @@ public:
 
 
 
+#pragma region EMITTERS
+
 class Message {
 public:
     GUI_OP( on_create ) {
@@ -1024,7 +1518,6 @@ public:
 };
 
 
-
 class Tick {
 public:
     GUI_OP( on_tick ) {
@@ -1033,7 +1526,8 @@ public:
             << RAND % 1200 + 600;
 
 
-        voice_auto_play( guild, ins );
+        if( !ins.voice_id().empty() )
+            voice_auto_play( guild, ins );
     }
 
 public:
@@ -1061,6 +1555,7 @@ public:
 
 };
 
+#pragma endregion EMITTERS
 
 
 std :: map< 

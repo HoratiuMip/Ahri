@@ -72,6 +72,7 @@ const wait_for = async ( millis ) => {
 };
 
 
+
 class Echo {
     constructor( entries ) {
         this._entries = {};
@@ -418,11 +419,15 @@ class Engine {
                 break; }
 
             case INBOUND_VOICE_DISCONNECT: {
-                let voice = this.voice_in( guild );
+                let idx = this.voices.findIndex( voice => {
+                    return voice.guild.id == ins.at( 0 );
+                } );
 
-                if( !voice ) break;
-                
-                voice.connection.destroy();
+                if( idx < 0 ) break;
+
+                this.voices[ idx ].connection.destroy();
+
+                this.voices.splice( idx, 1 );
 
                 
                 break; }
