@@ -15,6 +15,7 @@ const {
     User,
     Guild,
     ApplicationCommandNumericOptionMinMaxValueMixin,
+    range,
 } = require( "discord.js" );
 
 const {
@@ -57,6 +58,8 @@ const INBOUND_VOICE_STOP = "voice_stop";
 const INBOUND_TICK_GUILD_SET = "tick_guild_set";
 
 
+const OUTBOUND_MESSAGE = "message";
+const OUTBOUND_VOICE_UPDATE = "voice_update";
 const OUTBOUND_TICK = "tick";
 
 //#endregion
@@ -103,6 +106,8 @@ class Voice {
     constructor( channel ) {
         this.guild = channel.guild;
 
+        this.channel = channel;
+
         this.connection = joinVoiceChannel( {
             channelId: channel.id,
             guildId: this.guild.id,
@@ -134,10 +139,10 @@ class Voice {
 
 @returns { VoiceBasedChannel }
 **/
-const voice_channel_of = ( guild, user ) => {
+const voice_of = ( user, guild ) => {
     let member = guild.members.cache.get( user.id );
 
-    return member.voice.channel;
+    return member.voice;
 }
 
 //#endregion Utility
@@ -210,11 +215,7 @@ class Engine {
         ] );
 
 
-        let args = [
-            "message",
-            msg.guildId,
-            msg.author.id,
-        ];
+        let args = this.make_front( OUTBOUND_MESSAGE, msg.guild, msg.author );
 
         msg.content.split( " " ).forEach( ( component ) => {
             args.push( component );
@@ -250,13 +251,16 @@ class Engine {
         ] );
 
 
-        let inbound = this.run_engine( [
-            "voice_update",
-            new_state.guild.id,
-            new_state.member.user.id,
-            old_state.channelId ?? "",
-            new_state.channelId ?? ""
-        ] );
+        let args = this.make_front( 
+            OUTBOUND_VOICE_UPDATE, 
+            new_state.guild, 
+            new_state.member.user
+        );
+
+        args.push( old_state.channelId ?? "" );
+        args.push( new_state.channelId ?? "" );
+
+        let inbound = this.run_engine( args );
 
 
         echo.push( {
@@ -281,10 +285,7 @@ class Engine {
         ] );
 
 
-        let inbound = this.run_engine( [
-            OUTBOUND_TICK,
-            tick.guild.id
-        ] );
+        let inbound = this.run_engine( this.make_front( OUTBOUND_TICK, tick.guild, null ) );
 
 
         echo.push( {
@@ -301,6 +302,29 @@ class Engine {
 
 
 //#region Exe
+
+    make_front = ( event, guild, user ) => {
+        let args = [ event, guild.id ];
+
+        let voice = this.voice_in( guild.id );
+
+        args.push( voice ? voice.channel.id : "" );
+
+        if( !user ) {
+            for( let n = 1; n <= 2; ++n )
+                args.push( "" );
+            
+            return args;
+        } 
+
+        args.push( user.id );
+
+        voice = voice_of( user, guild );
+
+        args.push( voice.channel ? voice.channel.id : ""  );
+
+        return args;
+    }
 
     run_engine( args ) {
         try {
@@ -377,9 +401,9 @@ class Engine {
 
 
             case INBOUND_VOICE_CONNECT: {
-                let channel = voice_channel_of( guild, user );
+                let voice = voice_of( user, guild ); 
 
-                if( !channel ) {
+                if( !voice.channel ) {
                     if( xtra instanceof Message ) {
                         this.execute_link( INBOUND_REPLY_MESSAGE, guild, user, xtra, [ "Where are youuu..." ] );
                     }
@@ -388,7 +412,7 @@ class Engine {
                 }
 
 
-                this.voices.push( new Voice( channel ) );
+                this.voices.push( new Voice( voice.channel ) );
             
 
                 break; }

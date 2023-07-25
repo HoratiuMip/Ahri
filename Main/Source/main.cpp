@@ -332,9 +332,9 @@ public:
 #pragma region Branches
 
 public:
-    COMMAND_BRANCH( what ) {
+    GUI_OP( what ) {
         if( !ins.empty() ) {
-            static auto try_play = [ & ] ( const std :: string& sound ) -> bool {
+            auto try_play = [ & ] ( const std :: string& sound ) -> bool {
                 if( !Sound :: exists( sound ) )
                     return false;
 
@@ -364,11 +364,11 @@ public:
 
         std :: cout
             << OUTBOUND_REPLY_MESSAGE
-            << "Whaaaat are you sayinnnnn";
+            << "Whaaaat are you sayinnnnn...";
     }
 
 public:
-    COMMAND_BRANCH( hash ) {
+    GUI_OP( hash ) {
         if( !ins.at( 0 ).starts_with( '\"' )
             ||
             !ins.at( 0 ).ends_with( '\"' )
@@ -388,7 +388,7 @@ public:
     };
 
 public:
-    COMMAND_BRANCH( kiss ) {
+    GUI_OP( kiss ) {
         std :: cout
             << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/heart-ahri-love-gif-18791933";
@@ -399,24 +399,24 @@ public:
         Command :: voice_play( guild, user, ins );
     }
 
-    COMMAND_BRANCH( pet ) {
+    GUI_OP( pet ) {
         std :: cout
             << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
 public:
-    COMMAND_BRANCH( voice_connect ) {
+    GUI_OP( voice_connect ) {
         std :: cout
             << OUTBOUND_VOICE_CONNECT;
     }
 
-    COMMAND_BRANCH( voice_disconnect ) {
+    GUI_OP( voice_disconnect ) {
         std :: cout
             << OUTBOUND_VOICE_DISCONNECT;
     }
 
-    COMMAND_BRANCH( voice_play ) {
+    GUI_OP( voice_play ) {
         std :: cout
             << OUTBOUND_VOICE_PLAY
             << guild.id()
@@ -424,13 +424,13 @@ public:
             << Sound :: path_of( ins.at( 0 ) );
     }
 
-    COMMAND_BRANCH( voice_stop ) {
+    GUI_OP( voice_stop ) {
         std :: cout
             << OUTBOUND_VOICE_STOP
             << guild.id();
     }
 
-    COMMAND_BRANCH( voice_sounds_show ) {
+    GUI_OP( voice_sounds_show ) {
         std :: string path{};
 
         path.reserve( PATH_MAX );
@@ -450,23 +450,19 @@ public:
         Embed{
             title: "DJ Ahri spinnin' these bad boys:",
 
-            description: 
+            description:
                 accumulated
                 +=
                 "\n\nYou may write the sounds with space instead of underscore.",
-                
+
             color: EMBEDS_COLOR_INFO,
 
             image: "vinyl_purple.png"
         }.outbound();
     }
 
-    COMMAND_BRANCH( voice_auto_play ) {
-
-        }
-
 public:
-    COMMAND_BRANCH( settings_voice_wait_set ) {
+    GUI_OP( settings_voice_wait_set ) {
         try {
             Settings :: voice_hi_wait_to( std :: abs( std :: stod( ins.at( 0 ) ) ) * 1000.0 );
 
@@ -506,7 +502,7 @@ public:
         }
     }
 
-    COMMAND_BRANCH( settings_voice_wait_show ) {
+    GUI_OP( settings_voice_wait_show ) {
             Embed{
                 title:
                     Stream{}
@@ -519,7 +515,7 @@ public:
         }
 
 public:
-    COMMAND_BRANCH( guild_prefix_set ) {
+    GUI_OP( guild_prefix_set ) {
         auto last = guild.prefix();
 
         guild.prefix_to( ins.at( 0 ) );
@@ -537,7 +533,7 @@ public:
         }.outbound();
     }
 
-    COMMAND_BRANCH( guild_prefix_show ) {
+    GUI_OP( guild_prefix_show ) {
             Embed{
                 title:
                     Stream{}
@@ -547,7 +543,7 @@ public:
             }.outbound();
         }
 
-    COMMAND_BRANCH( guild_voice_auto_plays_add ) {
+    GUI_OP( guild_voice_auto_plays_add ) {
         enum Payload_info {
             PROBS_CALIBD
         };
@@ -559,8 +555,8 @@ public:
         =
         ins.for_each< std :: string, double >(
             {
-                [] ( const std :: string& in ) -> std :: string { 
-                    return in; 
+                [] ( const std :: string& in ) -> std :: string {
+                    return in;
                 },
 
                 [] ( std :: string& match ) -> bool {
@@ -588,8 +584,8 @@ public:
                 } );
 
 
-                payload[ PROBS_CALIBD ] 
-                = 
+                payload[ PROBS_CALIBD ]
+                =
                 payload[ PROBS_CALIBD ] | guild.voice_auto_plays_calibrate( prob, pairs );
 
 
@@ -601,7 +597,7 @@ public:
             }
         );
 
-        
+
         if( payload.done_count != 0 ) goto L_OK;
         if( payload.missing_at == 0 ) goto L_NO_SOUND;
         if( payload.missing_at == 1 ) goto L_NO_PROB;
@@ -609,8 +605,8 @@ public:
 
         L_OK: {
             if( payload[ PROBS_CALIBD ] )
-                embed_desc_acc 
-                << "\n\n" 
+                embed_desc_acc
+                << "\n\n"
                 << "Probabilities did not account to 1, therefore they have been calibrated.";
 
             Embed{
@@ -619,7 +615,7 @@ public:
                     << "Pushed "
                     << payload.done_count
                     << " sound"
-                    << ( payload.done_count == 1 ? "" : "s" ) 
+                    << ( payload.done_count == 1 ? "" : "s" )
                     << " to the guild's auto plays.",
 
                 description: embed_desc_acc,
@@ -631,7 +627,7 @@ public:
         }
 
         L_NO_SOUND: {
-            std :: cout 
+            std :: cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "Double-check the sound cutey.";
 
@@ -639,7 +635,7 @@ public:
         }
 
         L_NO_PROB: {
-            std :: cout 
+            std :: cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "Need a probability between 0 and 1.";
 
@@ -647,7 +643,7 @@ public:
         }
     }
 
-    COMMAND_BRANCH( guild_voice_auto_plays_clear ) {
+    GUI_OP( guild_voice_auto_plays_clear ) {
         File :: overwrite(
             GUILDS_PATH_MASTER + '\\' + guild.id(),
             GUILDS_PATH_AUTO_VOICE_PLAYS,
@@ -661,7 +657,7 @@ public:
         }.outbound();
     }
 
-    COMMAND_BRANCH( guild_voice_auto_plays_show ) {
+    GUI_OP( guild_voice_auto_plays_show ) {
         auto pairs = guild.voice_auto_plays();
 
         if( pairs.empty() ) {
@@ -690,7 +686,7 @@ public:
     }
 
 public:
-    COMMAND_BRANCH( user_credits_show ) {
+    GUI_OP( user_credits_show ) {
         Embed{
             title:
                 Stream{}
@@ -711,7 +707,7 @@ public:
         }.outbound();
     };
 
-    COMMAND_BRANCH( user_voice_hi_set ) {
+    GUI_OP( user_voice_hi_set ) {
         std :: string_view name = ins.at( 0 );
 
         if( !Sound :: exists( name ) ) {
@@ -735,7 +731,7 @@ public:
         }.outbound();
     }
 
-    COMMAND_BRANCH( user_voice_bye_set ) {
+    GUI_OP( user_voice_bye_set ) {
             std :: string_view name = ins.at( 0 );
 
             if( !Sound :: exists( name ) ) {
@@ -769,14 +765,14 @@ public:
         static constexpr std :: array< const char*, 3 > colors{ "red", "black", "green" };
 
     public:
-        COMMAND_BRANCH( main ) {
+        GUI_OP( main ) {
             const size_t credits = user.credits( guild );
 
-            auto payload 
-            = 
+            auto payload
+            =
             ins.for_each< int, int64_t >(
                 {
-                    [] ( const std :: string& in ) -> int { 
+                    [] ( const std :: string& in ) -> int {
                         for( size_t idx = 0; idx <= 2; ++idx )
                             if( in == colors[ idx ] )
                                 return std :: pow( 2, idx );
@@ -790,8 +786,8 @@ public:
                 },
 
                 {
-                    [] ( const std :: string& in ) -> int64_t { 
-                        return std :: stoll( in ); 
+                    [] ( const std :: string& in ) -> int64_t {
+                        return std :: stoll( in );
                     },
 
                     [ & ] ( int64_t& match ) -> bool {
@@ -799,11 +795,11 @@ public:
                     }
                 },
 
-                [ & ] ( 
-                    int& gambled_color, 
-                    int64_t& gambled_ammount, 
-                    Inbounds :: FE_payload& payload 
-                ) -> void { 
+                [ & ] (
+                    int& gambled_color,
+                    int64_t& gambled_ammount,
+                    Inbounds :: FE_payload& payload
+                ) -> void {
                     const auto land   = _roulette_spin( gambled_color );
                     int64_t    acc = 0;
 
@@ -868,7 +864,7 @@ public:
             }
         }
 
-        COMMAND_BRANCH( rig_set ) {
+        GUI_OP( rig_set ) {
             double rig_value = -1.0;
 
             for( auto& in : ins ) {
@@ -994,16 +990,7 @@ public:
 
 class Message {
 public:
-    static void on_create( Ref< Inbounds > ins ) {
-        ins.pop_front();
-
-        Guild guild{ std :: move( ins.at( 0 ) ) };
-        ins.pop_front();
-
-        User user{ std :: move( ins.at( 0 ) ) };
-        ins.pop_front();
-
-
+    GUI_OP( on_create ) {
         user.credits_add( 20, guild );
 
 
@@ -1014,47 +1001,24 @@ public:
 
 class Voice {
 public:
-    static void on_update( Ref< Inbounds > ins ) {
-        ins.pop_front();
+    GUI_OP( on_update ) {
+        auto& old_ch = ins.at( 0 );
+        auto& new_ch = ins.at( 1 );
 
-        Guild guild{ std :: move( ins.at( 0 ) ) };
-        ins.pop_front();
-
-        User user{ std :: move( ins.at( 0 ) ) };
-        ins.pop_front();
+        if( old_ch == new_ch ) 
+            return;
 
 
-        std :: bitset< 8 > flags{};
+        bool connected = ( new_ch == ins.voice_id() );
 
-        enum What {
-            CONNECTED = 1,
-            DISCONNECTED = 2
-        };
+        ins.emplace_front( connected ? user.voice_hi() : user.voice_bye() );
 
-        flags[ 0 ] = ins.at( 0 ).empty();
-        flags[ 1 ] = ins.at( 1 ).empty();
+        if( connected )
+            std :: this_thread :: sleep_for(
+                std :: chrono :: milliseconds( Settings :: voice_hi_wait() )
+            );
 
-
-        switch( auto what = flags.to_ulong() ) {
-            case CONNECTED:
-            case DISCONNECTED: {
-                const bool connected = ( what == CONNECTED );
-
-                ins.emplace_front( connected ? user.voice_hi() : user.voice_bye() );
-
-                if( ins.front().empty() )
-                    ins.front() = connected ? "hello_1" : "bye_great";
-
-                if( connected )
-                    std :: this_thread :: sleep_for(
-                        std :: chrono :: milliseconds( Settings :: voice_hi_wait() )
-                    );
-
-                Command :: voice_play( guild, user, ins );
-
-
-                break; }
-        }
+        Command :: voice_play( guild, {}, ins );
     }
 
 };
@@ -1063,14 +1027,7 @@ public:
 
 class Tick {
 public:
-    static void on_tick( Ref< Inbounds > ins ) {
-        ins.pop_front();
-
-        Guild guild{ ins.at( 0 ) };
-
-        ins.pop_front();
-
-
+    GUI_OP( on_tick ) {
         std :: cout
             << OUTBOUND_TICK_GUILD_SET
             << RAND % 1200 + 600;
@@ -1106,7 +1063,10 @@ public:
 
 
 
-Event_map event_map = {
+std :: map< 
+    std :: string_view, 
+    std :: function< void( Guild, User, Ref< Inbounds > ) > 
+>  event_map = {
     { INBOUND_MESSAGE,      Message :: on_create },
     { INBOUND_VOICE_UPDATE, Voice :: on_update },
     { INBOUND_TICK,         Tick :: on_tick }
@@ -1114,28 +1074,23 @@ Event_map event_map = {
 
 
 
-int main( int arg_count, char* args[] ) {
-    using srand_t = unsigned int;
-
-    srand( 
-        static_cast< srand_t >(
-            std :: chrono :: high_resolution_clock :: now().time_since_epoch().count()
-            %
-            static_cast< srand_t >( 
-                std :: pow( 10U, std :: numeric_limits< srand_t > :: digits10 )
-            )
+int main( int arg_count, char* args[] ) {    
+    srand(
+        static_cast< unsigned int >(
+            std :: chrono :: duration_cast< std :: chrono :: milliseconds >(
+                std :: chrono :: high_resolution_clock :: now().time_since_epoch()
+            ).count()
         )
      );
 
 
-    Inbounds ins = {};
+    Inbounds ins  { arg_count, args };
+    Guild    guild{ ins.guild_id() };
+    User     user { ins.user_id() }; 
 
-    for( int idx = 1; idx < arg_count; ++idx )
-        ins.emplace_back( args[ idx ] );
 
-
-    event_map.at( ins.front() )( ins );
-
+    event_map.at( ins.event() )( guild, user, ins );
+    
 
     return 0;
 }

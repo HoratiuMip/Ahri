@@ -13,6 +13,49 @@ public:
     using Base :: Base;
 
 public:
+    static constexpr size_t   mandatory_ins_count   = 5;
+
+public:
+    Inbounds() = default;
+
+    Inbounds( int arg_count, char** args ) {
+        for( int idx = 0; idx < mandatory_ins_count; ++idx )
+            _out_refs[ idx ] = args[ idx + 1 ];
+
+        for( int idx = mandatory_ins_count + 1; idx < arg_count; ++idx )
+            this -> emplace_back( args[ idx ] );
+    }
+
+private:
+    enum _OUT_REFS_ACCESS_IDX {
+        _EVENT, _GUILD_ID, _VOICE_ID, _USER_ID, _USER_VOICE_ID
+    };
+
+    std :: string   _out_refs[ mandatory_ins_count ]   = {};
+
+public:
+    auto& event() const {
+        return _out_refs[ _EVENT ];
+    }
+
+    auto& guild_id() const {
+        return _out_refs[ _GUILD_ID ];
+    }
+
+    auto& voice_id() const {
+        return _out_refs[ _VOICE_ID ];
+    }
+
+    auto& user_id() const {
+        return _out_refs[ _USER_ID ];
+    }
+
+    auto& user_voice_id() const {
+        return _out_refs[ _USER_VOICE_ID ];
+    }
+ 
+
+public:
     template< typename T >
     requires( std :: is_arithmetic_v< T > )
     auto max() {
@@ -152,13 +195,9 @@ private:
 template< typename T > 
 using Ref = T&;
 
-using Event_map = std :: map< std :: string_view, std :: function< void( Ref< Inbounds > ) > >;
-
-using ID = std :: string;
-
 using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
 
-#define COMMAND_BRANCH( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
+#define GUI_OP( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
 
 
@@ -201,17 +240,20 @@ std :: string operator + (
 
 class Has_id {
 public:
+    using type = std :: string_view;
+
+public:
     Has_id() = default;
 
-    Has_id( ID id )
+    Has_id( type id )
         : _id{ id }
     {}
 
 protected:
-    ID   _id   = {};
+    type   _id   = {};
 
 public:
-    ID id() const {
+    type id() const {
         return _id;
     }
 
