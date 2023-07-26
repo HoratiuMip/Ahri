@@ -40,6 +40,8 @@ const { timeStamp } = require("node:console");
 
 //#region Quints
 
+const NULL_BOUND = "NULL";
+
 const INBOUND_LOW_SPLIT = "||__LOW_SPLIT__||";
 const INBOUND_HIGH_SPLIT = "||__HIGH_SPLIT__||";
 
@@ -193,7 +195,7 @@ class Engine {
         } );
     }
 
-
+    
 //#region Ons
 
     on_ready() {
@@ -367,7 +369,7 @@ class Engine {
     @param { * } xtra 
     @param { string[] } ins 
     **/
-    execute_link( type, guild, user, xtra, ins ) {
+    execute_link = async ( type, guild, user, xtra, ins ) => {
         switch( type ) {
             case INBOUND_SCRIPT: {
                 eval( ins.at( 0 ) );
@@ -401,20 +403,29 @@ class Engine {
 
 
 
-            case INBOUND_VOICE_CONNECT: {
-                let voice = voice_of( user, guild ); 
+            case INBOUND_VOICE_CONNECT: {  
+                if( ins.at( 0 ) == NULL_BOUND ) break;
 
-                if( !voice.channel ) {
-                    if( xtra instanceof Message ) {
-                        this.execute_link( INBOUND_REPLY_MESSAGE, guild, user, xtra, [ "Where are youuu..." ] );
-                    }
+                let channel;
+                
+                try {
+                    channel = await this.client.channels.fetch( ins.at( 0 ) )
+                } catch( fault ) {
+                    xtra.reply( ins.at( 0 ) );
 
                     break;
                 }
 
+                if( !channel ) break;
 
-                this.voices.push( new Voice( voice.channel ) );
-            
+                let idx = this.voices.findIndex( voice => { 
+                    return voice.channel.id == channel.id; 
+                } );
+
+                if( idx >= 0 )
+                    this.voices.splice( idx, 1 );
+
+                this.voices.push( new Voice( channel ) );
 
                 break; }
 
