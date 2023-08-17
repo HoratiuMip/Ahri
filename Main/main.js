@@ -188,6 +188,8 @@ class Engine {
         */
         this.voices = [];
 
+        this.g_threads = [];
+
 
         this.client.login( config.token )
         .then( () => {
@@ -355,7 +357,7 @@ class Engine {
     @param { string[] } ins 
     **/
     execute_chain( chain, guild, user, xtra ) {
-        chain.split( INBOUND_HIGH_SPLIT ).forEach( async ( high ) => {
+        chain.split( INBOUND_HIGH_SPLIT ).forEach( ( high ) => {
             let lows = high.split( INBOUND_LOW_SPLIT );
 
             this.execute_link( lows.at( 0 ), guild, user, xtra, lows.slice( 1 ) );
@@ -466,9 +468,17 @@ class Engine {
             
 
             case INBOUND_TICK_GUILD_SET: {
+                if( xtra instanceof Message )
+                    xtra = this.payload_of( guild.id );
+
+                if( !xtra ) break;
+                    
                 xtra.delay = parseInt( ins.at( 0 ) );
 
-                xtra.unlock();
+                clearTimeout( xtra.timeout );
+
+                if( xtra.resolve ) xtra.resolve();
+                if( xtra.unlock ) xtra.unlock();
 
                 break; }
         }
@@ -494,32 +504,46 @@ class Engine {
         return found;
     }
 
+    payload_of( guild_id ) {
+        let found = null;
+
+        this.g_threads.forEach( ( thread ) => {
+            if( thread.guild.id == guild_id )
+                found = thread;
+        } );
+
+        return found;
+    }
+
 //#endregion Utility
 
 
     guilds_launch_threads = () => {
         this.client.guilds.cache.forEach( guild => {
-            this.guild_thread( guild );
+            this.g_threads.push( {
+                guild:   guild,
+                delay:   4,
+                unlock:  null,
+                timeout: null,
+                resolve: null
+            } );
+
+            this.guild_thread( this.g_threads.at( -1 ) );
         } );
     }
 
-    guild_thread = async ( guild ) => {
-        let tick = {
-            guild: guild,
-            delay: 6,
-            unlock: null
-        };
-
+    guild_thread = async ( payload ) => {
         while( true ) {
-            await wait_for( tick.delay * 1000 );
-
-            tick.unlock = null;
-
-            let sync = new Promise( resolve => {
-                tick.unlock = resolve;
+            await new Promise( resolve => {
+                payload.resolve = resolve;
+                payload.timeout = setTimeout( resolve, payload.delay * 1000 );
             } );
 
-            this.on_tick( tick );
+            let sync = new Promise( resolve => {
+                payload.unlock = resolve;
+            } );
+
+            this.on_tick( payload );
 
             await sync;
         }

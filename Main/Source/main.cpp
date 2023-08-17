@@ -73,8 +73,6 @@
 
 #define SETTINGS_PATH_VOICE_HI_WAIT "voice_hi_wait.arh"
 
-#define SETTINGS_PATH_GAMBLE_RIG "gamble_rig.arh"
-
 
 
 #define IMAGES_EMBEDS_PATH_MASTER std :: string{ ".\\Data\\Images\\Embeds" }
@@ -91,6 +89,8 @@
 #define GUILDS_PATH_PREFIX "prefix.arh"
 #define GUILDS_PATH_AUTO_VOICE_PLAYS "auto_voice_plays.arh"
 #define GUILDS_PATH_GAMBLE_RIG "gamble_rig.arh"
+#define GUILDS_PATH_STEAL_CHANCE "steal_chance.arh"
+#define GUILDS_PATH_TICK "tick.arh"
 
 
 
@@ -109,7 +109,8 @@
 
 
 std :: random_device random;
-#define RAND random()
+#define RANDOM random()
+#define RANDOM_MAX std :: random_device :: max()
 
 
 
@@ -163,7 +164,7 @@ public:
     auto& user_voice_id() const {
         return _out_refs[ _USER_VOICE_ID ];
     }
- 
+
 
 public:
     template< typename T >
@@ -225,21 +226,21 @@ public:
 
 public:
     template< typename ...Args >
-    FE_payload for_each( 
-        std :: pair< 
+    FE_payload for_each(
+        std :: pair<
             std :: function< Args( const std :: string& ) >,
             std :: function< bool( Args&, FE_payload& ) >
         >... builds,
 
-        std :: function< void( Args&..., FE_payload& ) > op 
+        std :: function< void( Args&..., FE_payload& ) > op
     ) {
         return _for_each< Args... >( builds..., op, std :: optional< Args >{}... );
     }
 
 private:
     template< typename ...Args >
-    FE_payload _for_each( 
-        std :: pair< 
+    FE_payload _for_each(
+        std :: pair<
             std :: function< Args( const std :: string& ) >,
             std :: function< bool( Args&, FE_payload& ) >
         >... builds,
@@ -256,9 +257,9 @@ private:
 
             ( ( args = this -> _extract_match( builds, payload ) ), ... );
 
-            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) ) 
+            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) )
                 break;
-            
+
             std :: invoke( op, args.value()..., payload );
 
             payload.done_count++;
@@ -271,8 +272,8 @@ private:
     }
 
     template< typename T >
-    std :: optional< T > _extract_match( 
-        std :: pair< 
+    std :: optional< T > _extract_match(
+        std :: pair<
             std :: function< T( const std :: string& ) >,
             std :: function< bool( T&, FE_payload& ) >
         > build,
@@ -285,11 +286,11 @@ private:
             try {
                 T entry = build.first( *itr );
 
-                if( !build.second( entry, payload ) ) 
+                if( !build.second( entry, payload ) )
                     continue;
 
                 this -> erase( itr );
-                
+
                 return std :: move( entry );
 
             } catch( ... ) {
@@ -304,7 +305,7 @@ private:
 
 
 
-template< typename T > 
+template< typename T >
 using Ref = T&;
 
 using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
@@ -315,37 +316,37 @@ using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double
 
 #pragma region BOOSTERS
 
-std :: string operator + ( 
-    const std :: string& rhs, 
-    const std :: string_view& lhs 
+std :: string operator + (
+    const std :: string& rhs,
+    const std :: string_view& lhs
 ) {
     return rhs + lhs.data();
 }
 
-std :: string operator + ( 
-    const std :: string_view& rhs, 
-    const std :: string_view& lhs 
+std :: string operator + (
+    const std :: string_view& rhs,
+    const std :: string_view& lhs
 ) {
     return std :: string{ rhs.data() } + lhs.data();
 }
 
-std :: string operator + ( 
-    const char* rhs, 
-    const std :: string_view& lhs 
+std :: string operator + (
+    const char* rhs,
+    const std :: string_view& lhs
 ) {
     return std :: string{ rhs } + lhs.data();
 }
 
-std :: string operator + ( 
-    const std :: string_view& rhs, 
-    const char* lhs 
+std :: string operator + (
+    const std :: string_view& rhs,
+    const char* lhs
 ) {
     return std :: string{ rhs.data() } + lhs;
 }
 
-std :: string operator + ( 
-    const std :: string_view& rhs, 
-    const char& lhs 
+std :: string operator + (
+    const std :: string_view& rhs,
+    const char& lhs
 ) {
     return std :: string{ rhs.data() } + lhs;
 }
@@ -391,10 +392,10 @@ public:
 
 class File {
 public:
-    static void overwrite( 
-        const std :: string_view& dir, 
+    static void overwrite(
+        const std :: string_view& dir,
         const std :: string_view& name,
-        const auto& content 
+        const auto& content
     ) {
         auto path = dir + '\\' + name;
 
@@ -405,13 +406,13 @@ public:
 
             file.open( path );
         }
-        
+
         file << content;
     }
 
     template< typename T >
     static T read(
-        const std :: string_view& dir, 
+        const std :: string_view& dir,
         const std :: string_view& name,
         const T& default_content = {}
     ) {
@@ -434,7 +435,7 @@ public:
 
 public:
     template< typename ...Args >
-    static void for_each( 
+    static void for_each(
         const std :: string_view& dir,
         const std :: string_view& name,
         const auto& op
@@ -447,13 +448,13 @@ public:
 
 private:
     template< typename ...Args >
-    static void _for_each( 
+    static void _for_each(
         const std :: string_view& dir,
         const std :: string_view& name,
         const auto& op,
         Args... args
     ) {
-        auto path = dir + '\\' + name; 
+        auto path = dir + '\\' + name;
 
         std :: ifstream file( path );
 
@@ -467,7 +468,7 @@ private:
         while( !file.eof() ) {
             ( ( file >> args ),... );
 
-            op( args... );
+            std :: invoke( op, args... );
         }
     }
 
@@ -524,6 +525,10 @@ public:
 #pragma region INBOUND_STRUCTURES
 
 class Guild : public Has_id {
+public:
+    static constexpr size_t   tick_min   = 3;
+    static constexpr size_t   tick_max   = 6000;
+
 public:
     Guild() = default;
 
@@ -619,6 +624,56 @@ public:
         );
     }
 
+public:
+    void steal_chance_to( double value ) {
+        File :: overwrite(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_STEAL_CHANCE,
+            value
+        );
+    }
+
+    double steal_chance() {
+        return File :: read< double >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_STEAL_CHANCE,
+            0.36
+        );
+    }
+
+public:
+    void ticks_to( size_t low, size_t high ) {
+        File :: overwrite< std :: string >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_TICK,
+            ( Stream{} << low << ' ' << high ).str()
+        );
+    }
+
+    auto ticks() {
+        std :: optional< std :: pair< size_t, size_t > > values{};
+
+        File :: for_each< size_t, size_t >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_TICK,
+
+            [ & ] ( size_t& low, size_t& high ) -> void {
+                values = std :: make_pair( low, high );
+            }
+        );
+
+        if( !values.has_value() ) {
+            values = std :: make_pair( 600, 1800 );
+
+            ticks_to( values.value().first, values.value().second );
+        }
+
+        return values.value();
+    }
+
+    static bool tick_in_range( size_t value ) {
+        return value >= tick_min && value <= tick_max;
+    }
 
 };
 
@@ -693,8 +748,40 @@ public:
         return File :: read< std :: string >(
             USERS_PATH_MASTER + '\\' + this -> _id,
             USERS_PATH_VOICE_BYE,
-            "bye_great"
+            "bye_bye"
         );
+    }
+
+public:
+    static std :: string make_id( std :: string_view str ) {
+        auto first = std :: find_if( str.begin(), str.end(), [] ( const char& c ) -> bool {
+            return std :: isdigit( c );
+        } );
+
+        auto last = &*std :: find_if( str.rbegin(), str.rend(), [] ( const char& c ) -> bool {
+            return std :: isdigit( c );
+        } );
+
+
+        if( first >= last ) return "";
+
+
+        std :: string id{ first, last - first + 1ULL };
+
+
+        if( id.length() != 18 && id.length() != 19 ) return "";
+
+
+        if(
+            std :: find_if( id.begin(), id.end(), [] ( const char& c ) -> bool {
+                return !std :: isdigit( c );
+            } )
+            !=
+            id.end()
+        )
+            return "";
+
+        return id;
     }
 
 };
@@ -915,7 +1002,9 @@ public:
         GUI_OP( disconnect ) {
             std :: cout
                 << OUTBOUND_VOICE_DISCONNECT
-                << guild.id();
+                << guild.id()
+                << OUTBOUND_REPLY_MESSAGE
+                << "https://tenor.com/bvQ8d.gif";
         }
 
         GUI_OP( play ) {
@@ -1017,7 +1106,7 @@ public:
                     color: EMBEDS_COLOR_INFO
                 }.outbound();
             }
-    };    
+    };
 
 public:
     struct Guilds {
@@ -1035,7 +1124,7 @@ public:
                     Stream{}
                     << "Changed it from \"" << last << "\".",
 
-                color: "00FF00"
+                color: EMBEDS_COLOR_INFO
             }.outbound();
         }
 
@@ -1190,7 +1279,7 @@ public:
                 color: EMBEDS_COLOR_INFO
             }.outbound();
         }
-    
+
         GUI_OP( gamble_rig_set ) {
             enum {
                 RIG_IN_RANGE = 0
@@ -1204,7 +1293,7 @@ public:
                     [] ( const std :: string& in ) -> double {
                         return std :: stod( in );
                     },
-                    
+
                     [] ( double& match, auto& payload ) -> bool {
                         return payload[ RIG_IN_RANGE ] = ( match >= 0.0 && match <= 1.0 );
                     }
@@ -1217,10 +1306,10 @@ public:
 
                     Embed{
                         title:
-                            Stream{} << "Gamble rig value is now **" << rig_value << "**",
+                            Stream{} << "Gamble rig value is now **" << rig_value << "**.",
 
                         description:
-                            Stream{} << ( rig_value >= 0.5 ? "Hehe" : "" ),
+                            Stream{} << ( rig_value >= 0.5 ? "Hehe." : "" ),
 
                         color: EMBEDS_COLOR_INFO
 
@@ -1232,7 +1321,7 @@ public:
             if( payload.done_count != 0 )
                 return;
 
-            
+
             if( !payload[ RIG_IN_RANGE ] ) goto L_RIG_NOT_IN_RANGE;
             else                           goto L_NO_RIG_VALUE;
 
@@ -1253,6 +1342,198 @@ public:
                 return;
             }
         }
+
+        GUI_OP( steal_chance_set ) {
+            enum {
+                IN_RANGE = 0
+            };
+
+
+            auto payload
+            =
+            ins.for_each< double >(
+                {
+                    [] ( const std :: string& in ) -> double {
+                        return std :: stod( in );
+                    },
+
+                    [] ( double& match, auto& payload ) -> bool {
+                        return payload[ IN_RANGE ] = ( match >= 0.0 && match <= 1.0 );
+                    }
+                },
+
+                [ & ] ( double& chance, auto& payload ) -> void {
+                    payload.abort = true;
+
+                    guild.steal_chance_to( chance );
+
+                    Embed{
+                        title:
+                            Stream{} << "Steal chance is now **" << chance << "**.",
+
+                        color: EMBEDS_COLOR_INFO
+
+                    }.outbound();
+                }
+            );
+
+
+            if( payload.done_count != 0 )
+                return;
+
+
+            if( !payload[ IN_RANGE ] ) goto L_CHANCE_NOT_IN_RANGE;
+            else                       goto L_NO_CHANCE_VALUE;
+
+
+            L_CHANCE_NOT_IN_RANGE: {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE
+                    << "The chance shall be between **0.0** and **1.0**.";
+
+                return;
+            }
+
+            L_NO_CHANCE_VALUE: {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE
+                    << "I need a chance between **0.0** and **1.0**.";
+
+                return;
+            }
+        }
+
+        GUI_OP( steal_chance_show ) {
+            Embed{
+                title:
+                    Stream{}
+                    << "This guild's steal chance is **" << guild.steal_chance() << "**.",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+        }
+
+        GUI_OP( tick_set ) {
+            enum {
+                IN_RANGE,
+                MATCH_FOUND
+            };
+
+
+            auto build_process = [] ( const std :: string& in ) -> size_t {
+                return std :: stoull( in );
+            };
+
+            auto build_confirm = [] ( size_t& match, auto& payload ) -> bool {
+                payload[ MATCH_FOUND ] = true;
+
+                return payload[ IN_RANGE ] = payload[ IN_RANGE ] | Guild :: tick_in_range( match );
+            };
+
+
+            size_t                    low  = {};
+            std :: optional< size_t > high = {};
+
+
+            auto payload
+            =
+            ins.for_each< size_t >(
+                { build_process, build_confirm },
+
+                [ & ] ( size_t& match, auto& payload ) -> void {
+                    payload.abort = true;
+
+                    low = match;
+                }
+            );
+
+            if( payload[ MATCH_FOUND ] && !payload[ IN_RANGE ] ) goto L_NOT_IN_RANGE;
+
+            if( payload.done_count == 0 ) goto L_NO_TICK;
+
+
+            payload
+            =
+            ins.for_each< size_t >(
+                { build_process, build_confirm },
+
+                [ & ] ( size_t& match, auto& payload ) -> void {
+                    payload.abort = true;
+
+                    high = match;
+                }
+            );
+
+
+            if( payload[ MATCH_FOUND ] && !payload[ IN_RANGE ] ) goto L_NOT_IN_RANGE;
+
+
+            if( !high.has_value() )
+                high = low;
+            else
+                if( low > high.value() )
+                    std :: swap( low, high.value() );
+
+            guild.ticks_to( low, high.value() );
+
+
+            {
+                auto diff = high.value() - low;
+
+                std :: cout
+                    << OUTBOUND_TICK_GUILD_SET
+                    << ( ( diff == 0 ? 0 : ( RANDOM % diff ) ) + low );
+
+
+                Stream embed_title{};
+                embed_title << "Playing a sound every **"
+                            << low;
+
+                if( low != high.value() )
+                    embed_title << " - "
+                                << high.value();
+
+                embed_title << "** seconds.";
+
+
+                Embed{
+                    title: embed_title,
+
+                    description:
+                        Stream{}
+                        << "There are **"
+                        << guild.voice_auto_plays().size()
+                        << "** auto sounds in this guild.",
+
+                    color: EMBEDS_COLOR_INFO
+                }.outbound();
+
+
+                return;
+            }
+
+
+            L_NO_TICK: {
+                std :: cout
+                << OUTBOUND_REPLY_MESSAGE
+                << "How many seconds?";
+
+                return;
+            }
+
+            L_NOT_IN_RANGE: {
+                std :: cout
+                << OUTBOUND_REPLY_MESSAGE
+                << "The ticks must be over **"
+                << Guild :: tick_min
+                << "** seconds and under **"
+                << Guild :: tick_max
+                << "** seconds.";
+
+                return;
+            }
+        }
+
     };
 
 public:
@@ -1303,28 +1584,149 @@ public:
         }
 
         GUI_OP( voice_bye_set ) {
-                std :: string_view name = ins.at( 0 );
+            std :: string_view name = ins.at( 0 );
 
-                if( !Sound :: exists( name ) ) {
-                    Embed{
-                        title: "There's no such sound...",
-
-                        color: "FF0000"
-                    }.outbound();
-
-                    return;
-                }
-
-                user.voice_bye_to( name );
-
+            if( !Sound :: exists( name ) ) {
                 Embed{
-                    title:
-                        Stream{}
-                        << "Now I'm parting you with \"" << name << "\".",
+                    title: "There's no such sound...",
 
-                    color: EMBEDS_COLOR_INFO
+                    color: "FF0000"
                 }.outbound();
+
+                return;
             }
+
+            user.voice_bye_to( name );
+
+            Embed{
+                title:
+                    Stream{}
+                    << "Now I'm parting you with \"" << name << "\".",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+        }
+    
+        GUI_OP( credits_steal ) {
+            enum {
+                NO_CREDITS
+            };
+
+
+            auto payload = ins.for_each< std :: string >(
+                {
+                    [] ( const std :: string& in ) -> std :: string {
+                        return in;
+                    },
+
+                    [] ( std :: string& match, auto& payload ) -> bool {
+                        return !( match = User :: make_id( match ) ).empty();
+                    }
+                },
+
+                [ & ] ( std :: string& from_id, auto& payload ) -> void {
+                    constexpr int precision = 10000;
+
+
+                    payload.abort = true;
+
+
+                    User from{ from_id };
+
+                    double mul = std :: pow( 
+                                     static_cast< double >( RANDOM ) / RANDOM_MAX,
+                                     3
+                                 ) * 0.5;
+
+
+                    auto steal_success = [ & ] () -> void {
+                        const int64_t credits = from.credits( guild );
+
+                        if( credits <= 100 || RANDOM % 12 == 0 ) {
+                            payload[ NO_CREDITS ] = true;
+
+                            return;
+                        }
+
+
+                        int64_t stolen = credits * mul;
+
+                        from.credits_to( credits - stolen, guild );
+                        user.credits_add( stolen, guild );
+
+
+                        Embed {
+                            title: "Sneaky beaky.",
+
+                            description:
+                                Stream{}
+                                << "You got **"
+                                << stolen
+                                << "** credits from " 
+                                << "<@" << from.id() << ">.",
+
+                            color: EMBEDS_COLOR_INFO
+
+                        }.outbound();
+                    };
+
+                    auto steal_failed = [ & ] () -> void {
+                        const int64_t credits = user.credits( guild );
+
+
+                        int64_t owed = credits * mul;
+
+                        from.credits_add( owed, guild );
+                        user.credits_to( credits - owed, guild );
+
+
+                        Embed {
+                            title: "Busted!",
+
+                            description:
+                                Stream{}
+                                << "<@" << from.id() << ">"
+                                << " caught you, paid them **"
+                                << owed
+                                << "** credits.",
+
+                            color: EMBEDS_COLOR_INFO
+
+                        }.outbound();
+                    };
+
+
+                    if( RANDOM % precision <= guild.steal_chance() * precision )
+                        steal_success();
+                    else
+                        steal_failed();
+                }
+            );
+
+
+            if( payload.done_count == 0 ) goto L_NO_USER;
+            if( payload[ NO_CREDITS ] )   goto L_NO_CREDITS;
+
+            return;
+
+
+            L_NO_USER: {
+                std :: cout
+                << OUTBOUND_REPLY_MESSAGE
+                << "Who are you stealing from?";
+
+                return;
+            }
+
+            L_NO_CREDITS: {
+                std :: cout
+                << OUTBOUND_REPLY_MESSAGE
+                << "Lasa-i ma bani de o pita.";
+
+                return;
+            }
+        }
+
     };
 
 public:
@@ -1373,7 +1775,7 @@ public:
                     Inbounds :: FE_payload& payload
                 ) -> void {
                     const auto land   = _roulette_spin( guild, gambled_color );
-                    int64_t    acc = 0;
+                    int64_t    acc    = 0;
 
                     if( gambled_color == _roulette_land_to_color( land ) )
                         acc = gambled_ammount * ( land == 0 ? 13 : 1 );
@@ -1382,6 +1784,13 @@ public:
 
 
                     user.credits_to( credits + acc, guild );
+
+
+                    if( acc >= 0 ) {
+                        ins.push_front( "moan_1" );
+
+                        Voices :: play( guild, user, ins );
+                    }
 
 
                     Embed{
@@ -1442,10 +1851,10 @@ public:
         static int _roulette_spin( Guild guild, int gambled_color ) {
             static constexpr int precision = 1000000;
 
-            int land = static_cast< int >( RAND % 32 );
+            int land = static_cast< int >( RANDOM % 32 );
 
             if( _roulette_land_to_color( land ) == gambled_color )
-                if( RAND % precision < guild.rig() * precision )
+                if( RANDOM % precision < guild.rig() * precision )
                     land = std :: clamp( land + 1, 0, 31 );
 
             return land;
@@ -1488,7 +1897,10 @@ public:
         { 17, { "pop", "sub", "-", "erase", "remove" } },
         { 18, { "auto" } },
         { 19, { "stop" } },
-        { 20, { "clear" } }
+        { 20, { "clear" } },
+        { 21, { "tick" } },
+        { 22, { "steal", "rob" } },
+        { 23, { "chance", "probability" } }
     };
 
     inline static Map map = {
@@ -1512,10 +1924,14 @@ public:
         { 8901744138937185971ULL,  Guilds :: voice_auto_plays_clear },
         { 11115212484132745176ULL, Guilds :: voice_auto_plays_show },
         { 11779848440330006868ULL, Guilds :: gamble_rig_set },
+        { 9483180197231311695ULL,  Guilds :: steal_chance_set },
+        { 11508569767627199743ULL, Guilds :: steal_chance_show },
+        { 5410214646943873008ULL,  Guilds :: tick_set },
 
         { 4330606938181995941ULL,  Users :: credits_show },
         { 12382791774924742628ULL, Users :: voice_hi_set },
         { 183303123199750495ULL,   Users :: voice_bye_set },
+        { 3546343074134243021ULL,  Users :: credits_steal },
 
         { 15754336788579780731ULL, Gamble :: main }
     };
@@ -1570,9 +1986,13 @@ public:
 class Tick {
 public:
     GUI_OP( on_tick ) {
+        auto ticks = guild.ticks();
+
+        auto diff = ticks.second - ticks.first;
+
         std :: cout
             << OUTBOUND_TICK_GUILD_SET
-            << RAND % 1200 + 600;
+            << ( ( diff == 0 ? 0 : ( RANDOM % diff ) ) + ticks.first );
 
 
         if( !ins.voice_id().empty() )
@@ -1582,7 +2002,7 @@ public:
 public:
     static void voice_auto_play( Guild guild, Ref< Inbounds > ins ) {
         constexpr int precision = 1000000;
-        double        gauge     = RAND % precision;
+        double        gauge     = RANDOM % precision;
         double        sum       = 0.0;
 
         auto          pairs     = guild.voice_auto_plays();
@@ -1607,9 +2027,10 @@ public:
 #pragma endregion EMITTERS
 
 
-std :: map< 
-    std :: string_view, 
-    std :: function< void( Guild, User, Ref< Inbounds > ) > 
+
+std :: map<
+    std :: string_view,
+    std :: function< void( Guild, User, Ref< Inbounds > ) >
 >  event_map = {
     { INBOUND_MESSAGE,      Message :: on_create },
     { INBOUND_VOICE_UPDATE, Voice :: on_update },
@@ -1618,7 +2039,7 @@ std :: map<
 
 
 
-int main( int arg_count, char* args[] ) {    
+int main( int arg_count, char* args[] ) {
     srand(
         static_cast< unsigned int >(
             std :: chrono :: duration_cast< std :: chrono :: milliseconds >(
@@ -1630,11 +2051,11 @@ int main( int arg_count, char* args[] ) {
 
     Inbounds ins  { arg_count, args };
     Guild    guild{ ins.guild_id() };
-    User     user { ins.user_id() }; 
+    User     user { ins.user_id() };
 
 
     event_map.at( ins.event() )( guild, user, ins );
-    
+
 
     return 0;
 }
