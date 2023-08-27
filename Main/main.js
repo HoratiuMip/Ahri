@@ -58,11 +58,16 @@ const INBOUND_VOICE_STOP = "voice_stop";
 
 
 const INBOUND_TICK_GUILD_SET = "tick_guild_set";
+const INBOUND_TICK_GUILD_RESET = "tick_guild_reset";
 
 
 const OUTBOUND_MESSAGE = "message";
 const OUTBOUND_VOICE_UPDATE = "voice_update";
 const OUTBOUND_TICK = "tick";
+
+
+const OUTBOUND_TICK_INIT = "init";
+const OUTBOUND_TICK_VOICE = "voice";
 
 //#endregion
 
@@ -188,13 +193,13 @@ class Engine {
         */
         this.voices = [];
 
-        this.g_threads = [];
+        
+        this.next_tick_id = 1;
+
+        this.ticks = new Map();
 
 
-        this.client.login( config.token )
-        .then( () => {
-            this.guilds_launch_threads();
-        } );
+        this.client.login( config.token );
     }
 
     
@@ -207,6 +212,8 @@ class Engine {
             type: 0,
             name: "in the wilds."
         } );
+
+        this.guilds_launch_ticks();
     }
 
     /**
@@ -283,14 +290,16 @@ class Engine {
     }
 
 
-    on_tick = ( tick ) => {
+    on_tick = ( guild, type ) => {
         let echo = new Echo( [
             { info: "Tick", data: `At ${ new Date().toLocaleTimeString() }` },
-            { info: "In", data: { guild: tick.guild.name, id: tick.guild.id } }
+            { info: "In", data: { guild: guild.name, id: guild.id } }
         ] );
 
+        let args = this.make_front( OUTBOUND_TICK, guild, null );
+        args.push( type );
 
-        let inbound = this.run_engine( this.make_front( OUTBOUND_TICK, tick.guild, null ) );
+        let inbound = this.run_engine( args );
 
 
         echo.push( {
@@ -300,7 +309,7 @@ class Engine {
         echo.release();
 
 
-        this.execute_chain( inbound, null, null, tick );
+        this.execute_chain( inbound, null, null, null );
     }
 
 //#endregion
@@ -353,25 +362,25 @@ class Engine {
     @param { string } chain 
     @param { Guild } guild 
     @param { User } user 
-    @param { * } xtra 
+    @param { * } payload 
     @param { string[] } ins 
     **/
-    execute_chain( chain, guild, user, xtra ) {
+    execute_chain( chain, guild, user, payload ) {
         chain.split( INBOUND_HIGH_SPLIT ).forEach( ( high ) => {
             let lows = high.split( INBOUND_LOW_SPLIT );
 
-            this.execute_link( lows.at( 0 ), guild, user, xtra, lows.slice( 1 ) );
+            this.execute_link( lows.at( 0 ), guild, user, payload, lows.slice( 1 ) );
         } );
     }
 
     /**
-    @param { string } type 
-    @param { Guild } guild 
-    @param { User } user
-    @param { * } xtra 
+    @param { string }   type 
+    @param { Guild }    guild 
+    @param { User }     user
+    @param { * }        payload 
     @param { string[] } ins 
     **/
-    execute_link = async ( type, guild, user, xtra, ins ) => {
+    execute_link = async ( type, guild, user, payload, ins ) => {
         switch( type ) {
             case INBOUND_SCRIPT: {
                 eval( ins.at( 0 ) );
@@ -381,7 +390,7 @@ class Engine {
 
 
             case INBOUND_REPLY_MESSAGE: {
-                xtra.reply( ins.at( 0 ) );
+                payload.reply( ins.at( 0 ) );
 
                 break; }
             
@@ -397,7 +406,7 @@ class Engine {
                 .setColor( ins.at( 2 ) )
                 .setThumbnail( `attachment://${ name }` );
 
-                xtra.reply( {
+                payload.reply( {
                     files: [ path ], embeds: [ embed ]
                 } );
 
@@ -413,7 +422,7 @@ class Engine {
                 try {
                     channel = await this.client.channels.fetch( ins.at( 0 ) )
                 } catch( fault ) {
-                    xtra.reply( ins.at( 0 ) );
+                    payload.reply( ins.at( 0 ) );
 
                     break;
                 }
@@ -468,17 +477,51 @@ class Engine {
             
 
             case INBOUND_TICK_GUILD_SET: {
-                if( xtra instanceof Message )
-                    xtra = this.payload_of( guild.id );
+                let tick_id  = this.pull_tick_id();
+                let guild_id = ins.at( 0 );
+                let delay    = parseInt( ins.at( 1 ) ) * 1000;
+                let type     = ins.at( 2 );
 
-                if( !xtra ) break;
-                    
-                xtra.delay = parseInt( ins.at( 0 ) );
+                this.ticks.set(
+                    tick_id, 
 
-                clearTimeout( xtra.timeout );
+                    {
+                        guild_id: guild_id,
 
-                if( xtra.resolve ) xtra.resolve();
-                if( xtra.unlock ) xtra.unlock();
+                        type: type,
+
+                        timeout: setTimeout( () => {
+                            this.on_tick( this.pull_guild( guild_id ), type );
+                            
+                            this.ticks.delete( tick_id );
+
+                        }, delay )
+                    }
+                );
+
+                break; }
+
+            case INBOUND_TICK_GUILD_RESET: {
+                let guild_id = ins.at( 0 );
+                let type     = ins.at( 1 );
+
+
+                let matches = [];
+
+                this.ticks.forEach( ( value, key ) => {
+                    if( !( value.guild_id == guild_id && value.type == type ) ) return;
+
+                    clearTimeout( value.timeout );
+                        
+                    matches.push( key );
+                } );
+
+                matches.forEach( key => {
+                    this.ticks.delete( key );
+                } );
+
+
+                this.on_tick( this.pull_guild( guild_id ), type );
 
                 break; }
         }
@@ -515,43 +558,25 @@ class Engine {
         return found;
     }
 
+    pull_tick_id = () => {
+        return this.next_tick_id++;
+    }
+
+    pull_guild = ( guild_id ) => {
+        return this.client.guilds.cache.find( guild => guild.id == guild_id );
+    }
+
 //#endregion Utility
 
 
-    guilds_launch_threads = () => {
+    guilds_launch_ticks = () => {
         this.client.guilds.cache.forEach( guild => {
-            this.g_threads.push( {
-                guild:   guild,
-                delay:   4,
-                unlock:  null,
-                timeout: null,
-                resolve: null
-            } );
-
-            this.guild_thread( this.g_threads.at( -1 ) );
+            this.on_tick( guild, OUTBOUND_TICK_INIT );
         } );
-    }
-
-    guild_thread = async ( payload ) => {
-        while( true ) {
-            await new Promise( resolve => {
-                payload.resolve = resolve;
-                payload.timeout = setTimeout( resolve, payload.delay * 1000 );
-            } );
-
-            let sync = new Promise( resolve => {
-                payload.unlock = resolve;
-            } );
-
-            this.on_tick( payload );
-
-            await sync;
-        }
     }
 };
 
 
 
 var ahri = new Engine();
-
 

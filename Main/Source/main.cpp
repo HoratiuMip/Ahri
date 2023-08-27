@@ -61,6 +61,11 @@
 
 #define OUTBOUND_TICK_GUILD_SET OUTBOUND_HIGH_SPLIT "tick_guild_set" OUTBOUND_LOW_SPLIT
 
+#define OUTBOUND_TICK_GUILD_RESET OUTBOUND_HIGH_SPLIT "tick_guild_reset" OUTBOUND_LOW_SPLIT
+
+#define OUTBOUND_TICK_INIT "init"
+#define OUTBOUND_TICK_VOICE "voice"
+
 
 
 #define INBOUND_MESSAGE "message"
@@ -90,7 +95,8 @@
 #define GUILDS_PATH_AUTO_VOICE_PLAYS "auto_voice_plays.arh"
 #define GUILDS_PATH_GAMBLE_RIG "gamble_rig.arh"
 #define GUILDS_PATH_STEAL_CHANCE "steal_chance.arh"
-#define GUILDS_PATH_TICK "tick.arh"
+#define GUILDS_PATH_TICK_VOICE "tick_voice.arh"
+#define GUILDS_PATH_MUL "mul.arh"
 
 
 
@@ -309,6 +315,7 @@ template< typename T >
 using Ref = T&;
 
 using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
+using Tick_pair              = std :: pair< size_t, size_t >;
 
 #define GUI_OP( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
@@ -526,7 +533,7 @@ public:
 
 class Guild : public Has_id {
 public:
-    static constexpr size_t   tick_min   = 3;
+    static constexpr size_t   tick_min   = 1;
     static constexpr size_t   tick_max   = 6000;
 
 public:
@@ -535,8 +542,20 @@ public:
     using Has_id :: Has_id;
 
 public:
-    double multiplier() const {
-        return 1.0;
+    double mul() const {
+        return File :: read< double >(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_MUL,
+            1.0
+        );
+    }
+
+    void mul_to( double value ) {
+        File :: overwrite(
+            GUILDS_PATH_MASTER + '\\' + this -> _id,
+            GUILDS_PATH_MUL,
+            value
+        );
     }
 
 public:
@@ -642,20 +661,20 @@ public:
     }
 
 public:
-    void ticks_to( size_t low, size_t high ) {
+    void ticks_voice_to( size_t low, size_t high ) {
         File :: overwrite< std :: string >(
             GUILDS_PATH_MASTER + '\\' + this -> _id,
-            GUILDS_PATH_TICK,
+            GUILDS_PATH_TICK_VOICE,
             ( Stream{} << low << ' ' << high ).str()
         );
     }
 
-    auto ticks() {
+    Tick_pair ticks_voice() {
         std :: optional< std :: pair< size_t, size_t > > values{};
 
         File :: for_each< size_t, size_t >(
             GUILDS_PATH_MASTER + '\\' + this -> _id,
-            GUILDS_PATH_TICK,
+            GUILDS_PATH_TICK_VOICE,
 
             [ & ] ( size_t& low, size_t& high ) -> void {
                 values = std :: make_pair( low, high );
@@ -665,10 +684,18 @@ public:
         if( !values.has_value() ) {
             values = std :: make_pair( 600, 1800 );
 
-            ticks_to( values.value().first, values.value().second );
+            ticks_voice_to( values.value().first, values.value().second );
         }
 
         return values.value();
+    }
+
+    size_t pull( Tick_pair ( Guild :: *method )() ) {
+        auto ticks = std :: invoke( method, this );
+
+        auto diff = ticks.second - ticks.first + 1;
+
+        return ( diff == 0 ? 0 : ( RANDOM % diff ) ) + ticks.first;
     }
 
     static bool tick_in_range( size_t value ) {
@@ -707,7 +734,7 @@ public:
 
     void credits_add( int64_t value, Guild guild ) {
         this -> credits_to(
-            ( this -> credits( guild ) + value ) * guild.multiplier(),
+            ( this -> credits( guild ) + value ),
             guild
         );
     }
@@ -987,24 +1014,47 @@ public:
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
 
+    GUI_OP( boobas ) {
+        const char* gifs[] = {
+            "https://tenor.com/view/boobs-anime-kawaii-hot-anime-girl-bigboobs-gif-21508889",
+            "https://tenor.com/view/anime-boobies-boobs-big-boobs-pretty-gif-17901457",
+            "https://tenor.com/view/bunny-boobs-anime-gif-19764518",
+            "https://tenor.com/view/anime-gif-23317513",
+            "https://tenor.com/view/erza-scarlet-fairy-tail-anime-gif-11588106",
+            "https://tenor.com/view/boobs-oppai-motor-boating-face-boobed-love-anime-gif-17210152",
+            "https://tenor.com/view/anime-gif-5881824",
+            "https://tenor.com/view/boobs-anime-gif-18953661",
+            "https://tenor.com/view/anime-boobs-jiggle-red-bra-gif-20935078",
+            "https://tenor.com/view/squeeze-rabbit-boob-job-boobs-gif-15366098",
+            "https://tenor.com/view/unzip-girl-bounce-boobs-gif-16742734",
+            "https://tenor.com/view/noucome-oppai-smack-anime-ayame-reikadou-gif-20051530"
+        };
+
+        std :: cout
+            << OUTBOUND_REPLY_MESSAGE
+            << gifs[ RANDOM % std :: size( gifs ) ];
+    }
+
 public:
     struct Voices {
         GUI_OP( connect ) {
-            std :: cout
-                << OUTBOUND_VOICE_CONNECT;
+            if( ins.user_voice_id().empty() ) {
+                std :: cout
+                    << OUTBOUND_REPLY_MESSAGE
+                    << "Where are you...";
 
-            if( ins.user_voice_id().empty() )
-                std :: cout << "Where are you...";
-            else
-                std :: cout << ins.user_voice_id();
+                return;
+            }
+
+            std :: cout
+                << OUTBOUND_VOICE_CONNECT
+                << ins.user_voice_id();
         }
 
         GUI_OP( disconnect ) {
             std :: cout
                 << OUTBOUND_VOICE_DISCONNECT
-                << guild.id()
-                << OUTBOUND_REPLY_MESSAGE
-                << "https://tenor.com/bvQ8d.gif";
+                << guild.id();
         }
 
         GUI_OP( play ) {
@@ -1070,7 +1120,7 @@ public:
 
                     description: ( value >= 5000 ? "\nI could take a bath in the meantime tho..." : "" ),
 
-                    color: "00FF00"
+                    color: EMBEDS_COLOR_INFO
 
                 }.outbound();
 
@@ -1343,6 +1393,16 @@ public:
             }
         }
 
+        GUI_OP( gamble_rig_show ) {
+            Embed{
+                title:
+                    Stream{}
+                    << "This guild's gamble rig is **" << guild.rig() << "**.",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+        }
+
         GUI_OP( steal_chance_set ) {
             enum {
                 IN_RANGE = 0
@@ -1413,7 +1473,7 @@ public:
             }.outbound();
         }
 
-        GUI_OP( tick_set ) {
+        GUI_OP( ticks_voice_set ) {
             enum {
                 IN_RANGE,
                 MATCH_FOUND
@@ -1474,15 +1534,15 @@ public:
                 if( low > high.value() )
                     std :: swap( low, high.value() );
 
-            guild.ticks_to( low, high.value() );
+            guild.ticks_voice_to( low, high.value() );
 
 
             {
-                auto diff = high.value() - low;
-
                 std :: cout
-                    << OUTBOUND_TICK_GUILD_SET
-                    << ( ( diff == 0 ? 0 : ( RANDOM % diff ) ) + low );
+                    << OUTBOUND_TICK_GUILD_RESET
+                    << guild.id()
+                    << OUTBOUND_LOW_SPLIT
+                    << OUTBOUND_TICK_VOICE;
 
 
                 Stream embed_title{};
@@ -1534,6 +1594,45 @@ public:
             }
         }
 
+        GUI_OP( ticks_voice_show ) {
+            auto [ low, high ] = guild.ticks_voice();
+
+            Stream embed_title{};
+            embed_title << "Playing a sound every **"
+                        << low;
+
+            if( low != high )
+                embed_title << " - "
+                            << high;
+
+            embed_title << "** seconds.";
+
+
+            Embed{
+                title: embed_title,
+
+                description:
+                    Stream{}
+                    << "There are **"
+                    << guild.voice_auto_plays().size()
+                    << "** auto sounds in this guild.",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+        }
+
+        GUI_OP( mul_show ) {
+            Embed {
+                title:
+                    Stream{}
+                    << "Guild's credit multiplier is **"
+                    << guild.mul()
+                    << "**.",
+
+                color: EMBEDS_COLOR_INFO
+            }.outbound();
+        }
+
     };
 
 public:
@@ -1548,8 +1647,8 @@ public:
 
                 description:
                     Stream{}
-                    << "Guild multiplier is **"
-                    << guild.multiplier()
+                    << "Guild's credit multiplier is **"
+                    << guild.mul()
                     << "**.",
 
                 color: "FFD700",
@@ -1577,7 +1676,7 @@ public:
             Embed{
                 title:
                     Stream{}
-                    << "Now I'm greeting you with \"" << name << "\".",
+                    << "Your intro sound is now \"" << name << "\".",
 
                 color: EMBEDS_COLOR_INFO
             }.outbound();
@@ -1601,12 +1700,12 @@ public:
             Embed{
                 title:
                     Stream{}
-                    << "Now I'm parting you with \"" << name << "\".",
+                    << "Your outro sound is now \"" << name << "\".",
 
                 color: EMBEDS_COLOR_INFO
             }.outbound();
         }
-    
+
         GUI_OP( credits_steal ) {
             enum {
                 NO_CREDITS
@@ -1628,12 +1727,12 @@ public:
                     constexpr int precision = 10000;
 
 
-                    payload.abort = true;
+                    ///payload.abort = true;
 
 
                     User from{ from_id };
 
-                    double mul = std :: pow( 
+                    double mul = std :: pow(
                                      static_cast< double >( RANDOM ) / RANDOM_MAX,
                                      3
                                  ) * 0.5;
@@ -1662,7 +1761,7 @@ public:
                                 Stream{}
                                 << "You got **"
                                 << stolen
-                                << "** credits from " 
+                                << "** credits from "
                                 << "<@" << from.id() << ">.",
 
                             color: EMBEDS_COLOR_INFO
@@ -1786,13 +1885,6 @@ public:
                     user.credits_to( credits + acc, guild );
 
 
-                    if( acc >= 0 ) {
-                        ins.push_front( "moan_1" );
-
-                        Voices :: play( guild, user, ins );
-                    }
-
-
                     Embed{
                         title:
                             Stream{}
@@ -1887,8 +1979,8 @@ public:
         { 7, { "play" } },
         { 8, { "set", "change", "=", "make" } },
         { 9, { "prefix" } },
-        { 10, { "hi", "hello", "greet" } },
-        { 11, { "bye", "cya" } },
+        { 10, { "hi", "hello", "greet", "intro" } },
+        { 11, { "bye", "cya", "outro" } },
         { 12, { "wait", "hold" } },
         { 13, { "sounds", "soundboard" } },
         { 14, { "gamble", "bet" } },
@@ -1900,14 +1992,19 @@ public:
         { 20, { "clear" } },
         { 21, { "tick" } },
         { 22, { "steal", "rob" } },
-        { 23, { "chance", "probability" } }
+        { 23, { "chance", "probability" } },
+        { 24, { "boobas", "boobs", "tiddies", "tt" } },
+        { 25, { "mul", "multiplier" } },
+        { 26, { "guild" } },
+        { 27, { "user" } }
     };
 
     inline static Map map = {
         { 6839924347221205416ULL, hash },
 
-        { 7728093003851250935ULL, kiss },
-        { 8501243811175406933ULL, pet },
+        { 7728093003851250935ULL,  kiss },
+        { 8501243811175406933ULL,  pet },
+        { 17600742676213031575ULL, boobas },
 
         { 7492372067882396056ULL,  Voices :: connect },
         { 3435728378537700265ULL,  Voices :: disconnect },
@@ -1924,9 +2021,12 @@ public:
         { 8901744138937185971ULL,  Guilds :: voice_auto_plays_clear },
         { 11115212484132745176ULL, Guilds :: voice_auto_plays_show },
         { 11779848440330006868ULL, Guilds :: gamble_rig_set },
+        { 5995434624829588022ULL,  Guilds :: gamble_rig_show },
         { 9483180197231311695ULL,  Guilds :: steal_chance_set },
         { 11508569767627199743ULL, Guilds :: steal_chance_show },
-        { 5410214646943873008ULL,  Guilds :: tick_set },
+        { 9960837043950823267ULL,  Guilds :: ticks_voice_set },
+        { 1450920041828067319ULL,  Guilds :: ticks_voice_show },
+        { 8604667370303577938ULL,  Guilds :: mul_show },
 
         { 4330606938181995941ULL,  Users :: credits_show },
         { 12382791774924742628ULL, Users :: voice_hi_set },
@@ -1945,7 +2045,11 @@ public:
 class Message {
 public:
     GUI_OP( on_create ) {
-        user.credits_add( 20, guild );
+        double mul = guild.mul();
+
+        user.credits_add( 20.0 * mul, guild );
+
+        guild.mul_to( std :: min( mul + 0.001, 10.0 ) );
 
 
         Instruc :: execute( guild, user, ins );
@@ -1986,21 +2090,25 @@ public:
 class Tick {
 public:
     GUI_OP( on_tick ) {
-        auto ticks = guild.ticks();
+        switch( std :: hash< std :: string_view >{}( ins.at( 0 ) ) ) {
+            case 7492372067882396056ULL: voice( guild, user, ins ); break;
 
-        auto diff = ticks.second - ticks.first;
-
-        std :: cout
-            << OUTBOUND_TICK_GUILD_SET
-            << ( ( diff == 0 ? 0 : ( RANDOM % diff ) ) + ticks.first );
-
-
-        if( !ins.voice_id().empty() )
-            voice_auto_play( guild, ins );
+            case 10702603417961775396ULL: init( guild, user, ins ); break;
+        }
     }
 
 public:
-    static void voice_auto_play( Guild guild, Ref< Inbounds > ins ) {
+    GUI_OP( init ) {
+        voice( guild, user, ins );
+    }
+
+    GUI_OP( voice ) {
+        Tick :: outbound( guild, guild.pull( Guild :: ticks_voice ), OUTBOUND_TICK_VOICE );
+
+
+        if( ins.voice_id().empty() ) return;
+
+
         constexpr int precision = 1000000;
         double        gauge     = RANDOM % precision;
         double        sum       = 0.0;
@@ -2020,6 +2128,17 @@ public:
         ins.push_front( itr -> first );
 
         Instruc :: Voices :: play( guild, {}, ins );
+    }
+
+public:
+    static void outbound( Guild guild, size_t delay, std :: string_view type ) {
+        std :: cout
+            << OUTBOUND_TICK_GUILD_SET
+            << guild.id()
+            << OUTBOUND_LOW_SPLIT
+            << delay
+            << OUTBOUND_LOW_SPLIT
+            << type;
     }
 
 };
