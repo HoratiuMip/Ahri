@@ -360,6 +360,28 @@ std :: string operator + (
 
 
 
+double close_match( std :: string_view str, std :: string_view target ) {
+    constexpr size_t   max_dist   = 2;
+    size_t             last       = 0;
+    double             matches    = 0.0;
+
+
+    for( auto chr : str )
+        for( auto idx = last; idx - last < max_dist && idx < target.length(); ++idx )
+            if( chr == target[ idx ] ) {
+                ++matches;
+
+                last = idx + 1;
+
+                break;
+            }
+            
+
+    return matches / std :: max( str.length(), target.length() );
+}
+
+
+
 class Has_id {
 public:
     using type = std :: string_view;
@@ -879,16 +901,17 @@ public:
                 << "Something went terribly wrong.";
 
             std :: cerr << '\n' << err.what();
+
         } catch( ... ) {
             std :: cout
                 << OUTBOUND_REPLY_MESSAGE
-                << "If this message is sent, it is bad.";
+                << "Uh oh...";
         }
     }
 
-    static size_t make_sense_of( Ref< Inbounds > ins ) {
-        std :: string             chain{};
-        std :: vector< Keyword* > kws{};
+    static size_t make_sense_of( Ref< Inbounds > ins, const bool first_time = true ) {
+        std :: string               chain{};
+        std :: vector< Keyword* >   kws{};
 
 
         for( auto itr = ins.begin(); itr != ins.end(); ) {
@@ -933,8 +956,35 @@ public:
             chain += std :: get< 1 >( *kw )[ 0 ];
 
 
-        return std :: hash< std :: string_view >{}( chain );
+        auto sense = std :: hash< std :: string_view >{}( chain );
+
+        if( !first_time || map.contains( sense ) )
+            return sense;
+
+        
+        for( auto& kw : kws )
+            ins.push_front( std :: get< 1 >( *kw ).front().data() );
+
+        
+        return make_sense_of( calibrate_ins( ins ), false );
     }
+
+    static Ref< Inbounds > calibrate_ins( Ref< Inbounds > ins ) { 
+        for( auto& in : ins ) {
+            std :: pair< double, Keyword* > best_match{};
+
+            for( auto& kw : keywords )
+                for( auto& alias : std :: get< 1 >( kw ) )
+                    if( double match = close_match( in, alias ); match >= 0.5 )
+                        if( match > best_match.first )
+                            best_match = std :: make_pair( match, &kw );   
+
+            if( best_match.second )
+                in = std :: get< 1 >( *best_match.second )[ 0 ];                 
+        }
+
+        return ins;
+    }   
 
 public:
 
@@ -1974,7 +2024,7 @@ public:
         { 2, { "hash" } },
         { 3, { "kiss" } },
         { 4, { "pet" } },
-        { 5, { "voice", "connect" } },
+        { 5, { "voice", "connect", "join" } },
         { 6, { "leave", "disconnect" } },
         { 7, { "play" } },
         { 8, { "set", "change", "=", "make" } },
@@ -2167,7 +2217,7 @@ int main( int arg_count, char* args[] ) {
         )
      );
 
-
+    
     Inbounds ins  { arg_count, args };
     Guild    guild{ ins.guild_id() };
     User     user { ins.user_id() };
