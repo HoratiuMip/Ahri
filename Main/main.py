@@ -1,5 +1,5 @@
 import sys
 
-str = sys.argv[ 1 ]
-
-print( str )
+while True:
+    print( sys.stdin.readline(), flush=True )
+    

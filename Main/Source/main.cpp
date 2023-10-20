@@ -65,6 +65,10 @@
 
 #define OUTBOUND_TICK_INIT "init"
 #define OUTBOUND_TICK_VOICE "voice"
+#define OUTBOUND_TICK_REMINDER "reminder"
+
+
+#define OUTBOUND_PYTHON_RESPONSE OUTBOUND_HIGH_SPLIT "python_response" OUTBOUND_LOW_SPLIT
 
 
 
@@ -114,7 +118,7 @@
 
 
 
-#define PYTHON_SCRIPT_MAIN "main.py"
+#define PYTHON_SCRIPT_MAIN "chatbot_predictor.py"
 
 #pragma endregion QUINTS
 
@@ -366,25 +370,53 @@ std :: string operator + (
 
 
 
+#if 1
 double close_match( std :: string_view str, std :: string_view target ) {
-    constexpr size_t   max_dist   = 2;
-    size_t             last       = 0;
-    double             matches    = 0.0;
+    constexpr int64_t   rad_right   = 1;
+    constexpr int64_t   rad_left    = 1;
+    int64_t             last        = 0;
+    double              matches     = 0.0;
 
 
-    for( auto chr : str )
-        for( auto idx = last; idx - last < max_dist && idx < target.length(); ++idx )
-            if( chr == target[ idx ] ) {
-                ++matches;
+    for( auto chr : str ) {
+        for( auto idx = last - rad_right; idx <= last + rad_left; ++idx ) {
+            if( static_cast< size_t >( idx ) >= target.length() ) continue;
 
-                last = idx + 1;
+            if( chr != target[ idx ] ) continue;
 
-                break;
-            }
+            ++matches;
 
+            break;
+        }
+
+        ++last;
+    }
 
     return matches / std :: max( str.length(), target.length() );
 }
+#else
+double close_match( std :: string_view str, std :: string_view target ) {
+    if( target.length() < str.length() )
+        std :: swap( target, str );
+
+    double diff[ target.length() ];
+
+    for( size_t idx = 0; idx < target.length(); ++idx ) {
+        diff[ idx ] = target[ idx ] - ( idx > str.length() ? 0 : str[ idx ] );
+
+        diff[ idx ] *= diff[ idx ];
+    }
+
+    double accd = std :: accumulate( diff, diff + target.length(), 0.0 );
+
+    for( size_t idx = 0; idx < target.length(); ++idx )
+        diff[ idx ] = target[ idx ] * target[ idx ];
+
+    double native = std :: accumulate( diff, diff + target.length(), 0.0 );
+
+    return ( native - accd ) / native;
+}
+#endif
 
 
 
@@ -924,16 +956,16 @@ public:
         }
     }
 
-    static size_t make_sense_of( 
-        Guild           guild, 
-        User            user, 
-        Ref< Inbounds > ins, 
-        const bool      first_time = true 
+    static size_t make_sense_of(
+        Guild           guild,
+        User            user,
+        Ref< Inbounds > ins,
+        const bool      first_time = true
     ) {
         std :: string               chain{};
         std :: vector< Keyword* >   kws{};
 
-
+  
         for( auto itr = ins.begin(); itr != ins.end(); ) {
             auto found = std :: find_if(
                 keywords.begin(), keywords.end(),
@@ -985,7 +1017,7 @@ public:
         for( auto& kw : kws )
             ins.push_front( std :: get< 1 >( *kw ).front().data() );
 
-        
+
         if( try_sound_play( guild, user, ins ) )
             return 0ULL;
 
@@ -1006,6 +1038,7 @@ public:
             if( best_match.second )
                 in = std :: get< 1 >( *best_match.second )[ 0 ];
         }
+
 
         return ins;
     }
@@ -2061,24 +2094,14 @@ public:
     class Python {
     public:
         GUI_OP( main ) {
-            std :: cout << OUTBOUND_REPLY_MESSAGE;
-            std :: cout.flush();
-
-
-            std :: string cmd{ "python " PYTHON_SCRIPT_MAIN };
-
-            cmd += " \"";
+            std :: string str{};
 
             for( auto& in : ins )
-                cmd += in, cmd += ' ';
+                str += in, str += ' ';
 
-            cmd.back() = '\"';
-
-
-            std :: system( cmd.c_str() );
-
-
-            std :: cout.flush();
+            std :: cout
+            << OUTBOUND_PYTHON_RESPONSE
+            << str;
         }
 
     };
@@ -2210,7 +2233,7 @@ class Tick {
 public:
     GUI_OP( on_tick ) {
         switch( std :: hash< std :: string_view >{}( ins.at( 0 ) ) ) {
-            case 7492372067882396056ULL: voice( guild, user, ins ); break;
+            case 7492372067882396056ULL:  voice( guild, user, ins ); break;
 
             case 10702603417961775396ULL: init( guild, user, ins ); break;
         }

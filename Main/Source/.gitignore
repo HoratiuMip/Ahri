@@ -1,4 +1,2 @@
-obj
-engine.cbp
-engine.depend
-engine.layout
+*
+!main.cpp

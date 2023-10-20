@@ -34,6 +34,7 @@ const {
 } = require( "fs" );
 const { type } = require("node:os");
 const { timeStamp } = require("node:console");
+const { stdout, stderr } = require("node:process");
 
 //#endregion
 
@@ -61,6 +62,9 @@ const INBOUND_TICK_GUILD_SET = "tick_guild_set";
 const INBOUND_TICK_GUILD_RESET = "tick_guild_reset";
 
 
+const INBOUND_PYTHON_RESPONSE = "python_response";
+
+
 const OUTBOUND_MESSAGE = "message";
 const OUTBOUND_VOICE_UPDATE = "voice_update";
 const OUTBOUND_TICK = "tick";
@@ -68,6 +72,7 @@ const OUTBOUND_TICK = "tick";
 
 const OUTBOUND_TICK_INIT = "init";
 const OUTBOUND_TICK_VOICE = "voice";
+const OUTBOUND_TICK_REMINDER = "reminder";
 
 //#endregion
 
@@ -197,6 +202,9 @@ class Engine {
         this.next_tick_id = 1;
 
         this.ticks = new Map();
+
+
+        this.python_script = require( "child_process" ).spawn( "python", [ "chatbot_predictor.py" ] );
 
 
         this.client.login( config.token );
@@ -524,6 +532,17 @@ class Engine {
                 this.on_tick( this.pull_guild( guild_id ), type );
 
                 break; }
+
+
+            
+            case INBOUND_PYTHON_RESPONSE: {
+                let response = await this.python_response( ins.at( 0 ) );
+
+                if( !response ) break;
+
+                payload.reply( response );
+
+                break; }
         }
     }
 
@@ -574,9 +593,24 @@ class Engine {
             this.on_tick( guild, OUTBOUND_TICK_INIT );
         } );
     }
+
+
+    python_response = async ( str ) => {
+        let sync = new Promise( ( resolve, reject ) => {
+            this.python_script.stdout.on( "data", ( response ) => {
+                resolve( response.toString() );
+            } );
+
+            this.python_script.stdin.write( str + "\n" );
+        } );
+        
+        return await sync;
+    }
 };
 
 
 
 var ahri = new Engine();
+
+
 
