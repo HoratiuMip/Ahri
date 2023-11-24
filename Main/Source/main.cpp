@@ -94,7 +94,7 @@
 
 #define GUILDS_DEFAULT_PREFIX "."
 
-#define GUILDS_AHRI_PREFIX "Ahri"
+#define GUILDS_AHRI_PREFIX "ahri"
 
 #define GUILDS_PATH_MASTER std :: string{ ".\\Data\\Guilds" }
 #define GUILDS_PATH_PREFIX "prefix.arh"
@@ -197,7 +197,7 @@ private:
     requires( std :: is_arithmetic_v< T > )
     std :: optional< T > _max( T ( *func )( const std :: string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
         std :: optional< T > max{};
-
+        
         for( auto& in : *this ) {
             try {
                 if(
@@ -369,8 +369,32 @@ std :: string operator + (
 }
 
 
-
 #if 1
+double close_match( std :: string_view str, std :: string_view target ) {
+    constexpr int64_t   offsets[]   = { 0, 1, -1 };
+    int64_t             at          = 0;
+    double              matches     = 0.0;
+
+
+    for( auto chr : str ) {
+        for( auto offset : offsets ) {
+            auto idx = at + offset;
+
+            if( static_cast< size_t >( idx ) >= target.length() ) continue;
+
+            if( chr != target[ idx ] ) continue;
+
+            matches += pow( 1.0 / ( 1.0 + abs( at - idx ) ), 0.5 );
+
+            break;
+        }
+
+        ++at;
+    }
+
+    return pow( matches / std :: max( str.length(), target.length() ), 1.0 );
+}
+#else
 double close_match( std :: string_view str, std :: string_view target ) {
     constexpr int64_t   rad_right   = 1;
     constexpr int64_t   rad_left    = 1;
@@ -384,7 +408,7 @@ double close_match( std :: string_view str, std :: string_view target ) {
 
             if( chr != target[ idx ] ) continue;
 
-            ++matches;
+            matches += 1.0 / ( 1.0 + abs( idx - last ) );
 
             break;
         }
@@ -394,7 +418,7 @@ double close_match( std :: string_view str, std :: string_view target ) {
 
     return matches / std :: max( str.length(), target.length() );
 }
-#else
+
 double close_match( std :: string_view str, std :: string_view target ) {
     if( target.length() < str.length() )
         std :: swap( target, str );
@@ -917,7 +941,13 @@ public:
 
 public:
     static void execute( Guild guild, User user, Ref< Inbounds > ins ) {
-        if( ins.at( 0 ) == GUILDS_AHRI_PREFIX ) {
+        if( std :: tolower( ins.at( 0 ).at( 0 ) ) == GUILDS_AHRI_PREFIX[ 0 ] ) {
+            std :: for_each( ins.at( 0 ).begin(), ins.at( 0 ).end(), [] ( char& c ) -> void {
+                c = std :: tolower( c );
+            } );
+
+            if( ins.at( 0 ) != GUILDS_AHRI_PREFIX ) return;
+
             ins.pop_front();
 
             Python :: main( guild, user, ins );
@@ -937,7 +967,7 @@ public:
 
 
         try {
-            std :: invoke( map.at( make_sense_of( guild, user, ins ) ), guild, user, ins );
+            std :: invoke( make_sense_of_2( ins ), guild, user, ins );
 
         } catch( std :: out_of_range& err ) {
             what( guild, user, ins );
@@ -945,17 +975,19 @@ public:
         } catch( std :: runtime_error& err ) {
             std :: cout
                 << OUTBOUND_REPLY_MESSAGE
-                << "Something went terribly wrong.";
+                << "<execute>: STD RTE";
 
             std :: cerr << '\n' << err.what();
 
         } catch( ... ) {
             std :: cout
                 << OUTBOUND_REPLY_MESSAGE
-                << "Uh oh...";
+                << "<execute>: UNKNOWN RTE";
         }
     }
 
+
+/* DEPRECATED
     static size_t make_sense_of(
         Guild           guild,
         User            user,
@@ -964,6 +996,8 @@ public:
     ) {
         std :: string               chain{};
         std :: vector< Keyword* >   kws{};
+
+        kws.reserve( ins.size() );
 
   
         for( auto itr = ins.begin(); itr != ins.end(); ) {
@@ -1069,6 +1103,151 @@ public:
         return false;
     }
 
+*/
+    
+
+    static Function extract_instruction_sense_2( 
+        Ref< Inbounds > ins
+    ) {
+        // to be checked: auto deq = static_cast< Inbounds :: Base >( ins );
+
+        Inbounds :: Base deq{ ins.begin(), ins.end() };
+
+        calibrate_ins_2( deq );
+
+        std :: vector< Keyword* > found_kws{}; 
+
+        for( auto& entry : deq ) {
+            auto itr = std::find_if( keywords.begin(), keywords.end(), [ & ] ( auto& kw ) -> bool {
+                for( auto& alias : std ::get< 1 >( kw ) )
+                    if( entry == alias )
+                        return true;
+                
+                return false;
+            } );
+
+            if( itr == keywords.end() ) continue;
+
+            found_kws.push_back( &*itr );
+        }
+
+        std :: sort( found_kws.begin(), found_kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
+            return std :: get< 0 >( *kw_1 ) > std :: get< 0 >( *kw_2 );
+        } );
+
+
+        uint64_t combs = std :: pow( 2, found_kws.size() ) - 1;
+
+        for( ; combs != 0; --combs ) {
+            std :: string chain{};
+
+            for( int64_t offs = found_kws.size() - 1; offs >= 0; --offs )
+                if( ( combs >> offs ) & 1 )
+                    chain += std :: get< 1 >( *found_kws[ offs ] ).front();
+
+            auto sense = std :: hash< std :: string_view >{}( chain );
+
+            try {
+                Function op = map.at( sense );
+
+                auto    itr  = ins.begin(); 
+                int64_t offs = found_kws.size() - 1;
+
+                for( ; itr != ins.end(); ) {
+                    if( ( combs >> offs ) & 1 )
+                        itr = ins.erase( itr );
+                    else
+                        ++itr;
+
+                    --offs; 
+                }
+
+                return op;
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return nullptr;
+    }
+
+    static Function extract_sound_sense_2(
+        Ref< Inbounds > ins
+    ) {
+        std :: string sound{};
+
+        for( auto& in : ins )
+            ( sound += in ) += '_';
+
+        sound.pop_back(); sound += ".mp3"; 
+
+
+        std :: pair< double, std :: string > best_match{ 0.5, "" };
+
+        for( auto& file : std :: filesystem :: directory_iterator{ SOUNDS_PATH_MASTER } ) { 
+            std :: string entry{ file.path().string().substr( 13 ) };
+
+           
+            if( sound == entry ) {
+                best_match.second = sound;
+
+                break;
+            }
+
+            if( double match = close_match( sound, entry ); match > best_match.first )
+                best_match = { match, std :: move( entry ) }; 
+        }
+
+
+        if( best_match.second.empty() ) return nullptr;
+
+
+        best_match.second.resize( best_match.second.size() - 4 );
+
+        ins.push_front( best_match.second );
+
+        return map.at( 9340956479027659370ULL );
+    }
+
+    static Function make_sense_of_2(
+        Ref< Inbounds > ins
+    ) {
+        static Function ( *extract_order[] )( Ref< Inbounds > ) = {
+            extract_instruction_sense_2,
+            extract_sound_sense_2
+        };
+
+
+        for( auto extract_op : extract_order ) {
+            Function extracted = std :: invoke( extract_op, ins );
+
+            if( extracted ) return extracted;
+        }
+
+    
+        throw std :: out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
+
+        return nullptr;
+    }
+
+    static void calibrate_ins_2( auto& container ) {
+        for( auto& entry : container ) {
+            std :: pair< double, Keyword* > best_match{ 0.5, nullptr };
+
+            for( auto& kw : keywords )
+                for( auto& alias : std :: get< 1 >( kw ) )
+                    if( entry == alias )
+                        goto L_PERFECT_MATCH;
+                    else if( double match = close_match( entry, alias ); match > best_match.first )
+                        best_match = std :: make_pair( match, &kw );
+
+            if( best_match.second )
+                entry = std :: get< 1 >( *best_match.second )[ 0 ];
+
+            L_PERFECT_MATCH: continue;
+        }
+    }
+
 public:
 
 #pragma region Branches
@@ -1165,10 +1344,10 @@ public:
 
         GUI_OP( play ) {
             std :: cout
-                << OUTBOUND_VOICE_PLAY
-                << guild.id()
-                << OUTBOUND_LOW_SPLIT
-                << Sound :: path_of( ins.at( 0 ) );
+            << OUTBOUND_VOICE_PLAY
+            << guild.id()
+            << OUTBOUND_LOW_SPLIT
+            << Sound :: path_of( ins.at( 0 ) );
         }
 
         GUI_OP( stop ) {

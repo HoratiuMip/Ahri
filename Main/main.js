@@ -222,6 +222,8 @@ class Engine {
         } );
 
         this.guilds_launch_ticks();
+
+        ///this.client.user.setAvatar( "C:/Hackerman/Git/Ahri/Pfps/arcade.png" );
     }
 
     /**
