@@ -78,13 +78,13 @@
 
 
 
-#define SETTINGS_PATH_MASTER std :: string{ ".\\Data\\Settings" }
+#define SETTINGS_PATH_MASTER std::string{ ".\\Data\\Settings" }
 
 #define SETTINGS_PATH_VOICE_HI_WAIT "voice_hi_wait.arh"
 
 
 
-#define IMAGES_EMBEDS_PATH_MASTER std :: string{ ".\\Data\\Images\\Embeds" }
+#define IMAGES_EMBEDS_PATH_MASTER std::string{ ".\\Data\\Images\\Embeds" }
 
 
 
@@ -96,7 +96,7 @@
 
 #define GUILDS_AHRI_PREFIX "ahri"
 
-#define GUILDS_PATH_MASTER std :: string{ ".\\Data\\Guilds" }
+#define GUILDS_PATH_MASTER std::string{ ".\\Data\\Guilds" }
 #define GUILDS_PATH_PREFIX "prefix.arh"
 #define GUILDS_PATH_AUTO_VOICE_PLAYS "auto_voice_plays.arh"
 #define GUILDS_PATH_GAMBLE_RIG "gamble_rig.arh"
@@ -106,15 +106,16 @@
 
 
 
-#define USERS_PATH_MASTER std :: string{ ".\\Data\\Users" }
+#define USERS_PATH_MASTER std::string{ ".\\Data\\Users" }
 #define USERS_PATH_VOICE_HI "voice_hi.arh"
 #define USERS_PATH_VOICE_BYE "voice_bye.arh"
 #define USERS_PATH_GUILD_CREDITS "credits.arh"
+#define USERS_PATH_REQUEST_DEBUG "request_debug.arh"
 #define USERS_PATH_GUILD "Guilds"
 
 
 
-#define SOUNDS_PATH_MASTER std :: string{ ".\\Data\\Audio" }
+#define SOUNDS_PATH_MASTER std::string{ ".\\Data\\Audio" }
 
 
 
@@ -124,18 +125,22 @@
 
 
 
-std :: random_device random;
+std::random_device random;
 #define RANDOM random()
-#define RANDOM_MAX std :: random_device :: max()
+#define RANDOM_MAX std::random_device::max()
 
 
 
-class Inbounds : public std :: deque< std :: string > {
+using namespace std::string_literals;
+
+
+
+class Inbounds : public std::deque< std::string > {
 public:
-    using Base = std :: deque< std :: string >;
+    using Base = std::deque< std::string >;
 
 public:
-    using Base :: Base;
+    using Base::Base;
 
 public:
     static constexpr int   mandatory_ins_count   = 5;
@@ -149,7 +154,10 @@ public:
         }
 
         for( int idx = mandatory_ins_count + 1; idx < arg_count; ++idx ) {
-            this -> emplace_back( args[ idx ] );
+            if( args[ idx ][ 0 ] == '-' )
+                _flags.insert( args[ idx ] );
+            else
+                this->emplace_back( args[ idx ] );
         }
     }
 
@@ -158,7 +166,8 @@ private:
         _EVENT, _GUILD_ID, _VOICE_ID, _USER_ID, _USER_VOICE_ID
     };
 
-    std :: string   _out_refs[ mandatory_ins_count ]   = {};
+    std::string                    _out_refs[ mandatory_ins_count ]   = {};
+    std::set< std::string_view >   _flags                             = {};
 
 public:
     auto& event() const {
@@ -181,28 +190,32 @@ public:
         return _out_refs[ _USER_VOICE_ID ];
     }
 
+public:
+    bool operator () ( std::string_view flag ) const {
+        return _flags.find( flag ) != _flags.end();
+    }
 
 public:
     template< typename T >
-    requires( std :: is_arithmetic_v< T > )
+    requires( std::is_arithmetic_v< T > )
     auto max() {
-        if constexpr( std :: is_same_v< int64_t, T > )
-            return _max< T >( std :: stoll );
-        else if constexpr( std :: is_same_v< double, T > )
-            return _max< T, size_t* >( std :: stod, nullptr );
+        if constexpr( std::is_same_v< int64_t, T > )
+            return _max< T >( std::stoll );
+        else if constexpr( std::is_same_v< double, T > )
+            return _max< T, size_t* >( std::stod, nullptr );
     }
 
 private:
     template< typename T, typename ...Xtra_args >
-    requires( std :: is_arithmetic_v< T > )
-    std :: optional< T > _max( T ( *func )( const std :: string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
-        std :: optional< T > max{};
-        
+    requires( std::is_arithmetic_v< T > )
+    std::optional< T > _max( T ( *func )( const std::string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
+        std::optional< T > max{};
+
         for( auto& in : *this ) {
             try {
                 if(
-                    T value = std :: invoke( func, in, xtra_args... );
-                    value > max.value_or( std :: numeric_limits< T > :: min() )
+                    T value = std::invoke( func, in, xtra_args... );
+                    value > max.value_or( std::numeric_limits< T >::min() )
                 )
                     max = value;
 
@@ -215,12 +228,12 @@ private:
     }
 
 public:
-    auto first_str( const std :: vector< std :: string_view >& strs ) {
-        std :: string_view first = {};
+    auto first_str( const std::vector< std::string_view >& strs ) {
+        std::string_view first = {};
 
         for( auto& in : *this ) {
             if(
-                auto itr = std :: find( strs.begin(), strs.end(), in );
+                auto itr = std::find( strs.begin(), strs.end(), in );
                 itr != strs.end()
             ) {
                 first = *itr;
@@ -233,7 +246,7 @@ public:
     }
 
 public:
-    class FE_payload : public std :: bitset< 32 > {
+    class FE_payload : public std::bitset< 32 > {
     public:
         int    done_count   = 0;
         int    missing_at   = 0;
@@ -243,27 +256,27 @@ public:
 public:
     template< typename ...Args >
     FE_payload for_each(
-        std :: pair<
-            std :: function< Args( const std :: string& ) >,
-            std :: function< bool( Args&, FE_payload& ) >
+        std::pair<
+            std::function< Args( const std::string& ) >,
+            std::function< bool( Args&, FE_payload& ) >
         >... builds,
 
-        std :: function< void( Args&..., FE_payload& ) > op
+        std::function< void( Args&..., FE_payload& ) > op
     ) {
-        return _for_each< Args... >( builds..., op, std :: optional< Args >{}... );
+        return _for_each< Args... >( builds..., op, std::optional< Args >{}... );
     }
 
 private:
     template< typename ...Args >
     FE_payload _for_each(
-        std :: pair<
-            std :: function< Args( const std :: string& ) >,
-            std :: function< bool( Args&, FE_payload& ) >
+        std::pair<
+            std::function< Args( const std::string& ) >,
+            std::function< bool( Args&, FE_payload& ) >
         >... builds,
 
-        std :: function< void( Args&..., FE_payload& ) > op,
+        std::function< void( Args&..., FE_payload& ) > op,
 
-        std :: optional< Args >... args
+        std::optional< Args >... args
     ) {
         FE_payload payload{};
 
@@ -271,12 +284,12 @@ private:
             if( payload.abort )
                 break;
 
-            ( ( args = this -> _extract_match( builds, payload ) ), ... );
+            ( ( args = this->_extract_match( builds, payload ) ), ... );
 
             if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) )
                 break;
 
-            std :: invoke( op, args.value()..., payload );
+            std::invoke( op, args.value()..., payload );
 
             payload.done_count++;
             payload.missing_at = 0;
@@ -288,26 +301,26 @@ private:
     }
 
     template< typename T >
-    std :: optional< T > _extract_match(
-        std :: pair<
-            std :: function< T( const std :: string& ) >,
-            std :: function< bool( T&, FE_payload& ) >
+    std::optional< T > _extract_match(
+        std::pair<
+            std::function< T( const std::string& ) >,
+            std::function< bool( T&, FE_payload& ) >
         > build,
 
         FE_payload& payload
     ) {
-        auto itr = this -> begin();
+        auto itr = this->begin();
 
-        for( ; itr != this -> end(); ++itr ) {
+        for( ; itr != this->end(); ++itr ) {
             try {
                 T entry = build.first( *itr );
 
                 if( !build.second( entry, payload ) )
                     continue;
 
-                this -> erase( itr );
+                this->erase( itr );
 
-                return std :: move( entry );
+                return std::move( entry );
 
             } catch( ... ) {
                 continue;
@@ -321,11 +334,74 @@ private:
 
 
 
+class DebugLayer {
+public:
+    inline static const char*   ERRORS   = "Errors";
+
+private:
+    inline static std::map< std::string, std::string >   _layers{};
+
+private:
+    static void _nop( std::string_view layer, std::string_view log ) {}
+
+    static void _push( std::string_view layer, std::string_view log ) {
+        std::string& current = _layers[ layer.data() ];
+
+        if( !current.empty() ) current += '\n';
+
+        ( current += '\t' ) += log;
+    }
+
+    inline static void ( *_route )( std::string_view, std::string_view ) = _nop;
+
+public:
+    static void push( std::string_view layer, std::string_view log ) {
+        std::invoke( _route, layer, log );
+    }
+
+    static void release() {
+        if( _route == _nop ) return;
+
+        std::cout << OUTBOUND_REPLY_MESSAGE;
+
+        for( auto& [ layer, log ] : _layers )
+            std::cout << "**" << layer << "**\n" << log << "\n\n";
+    }
+
+public:
+    static bool has_errors() {
+        return _layers.contains( ERRORS );
+    }
+
+public:
+    static void uplink() {
+        _route = _push;
+    }
+
+    static void kill() {
+        _route = _nop;
+    }
+
+    static bool has_uplink() {
+        return _route == _push;
+    }
+
+public:
+    static void if_uplinked( std::function< void() > op ) {
+        if( !has_uplink() ) return;
+
+        std::invoke( op );
+    }
+
+};
+
+
+
 template< typename T >
 using Ref = T&;
 
-using Voice_auto_plays_pairs = std :: vector< std :: pair< std :: string, double > >;
-using Tick_pair              = std :: pair< size_t, size_t >;
+using Voice_auto_plays_pairs = std::vector< std::pair< std::string, double > >;
+using Tick_pair              = std::pair< size_t, size_t >;
 
 #define GUI_OP( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
 
@@ -333,44 +409,44 @@ using Tick_pair              = std :: pair< size_t, size_t >;
 
 #pragma region BOOSTERS
 
-std :: string operator + (
-    const std :: string& rhs,
-    const std :: string_view& lhs
+std::string operator + (
+    const std::string& rhs,
+    const std::string_view& lhs
 ) {
     return rhs + lhs.data();
 }
 
-std :: string operator + (
-    const std :: string_view& rhs,
-    const std :: string_view& lhs
+std::string operator + (
+    const std::string_view& rhs,
+    const std::string_view& lhs
 ) {
-    return std :: string{ rhs.data() } + lhs.data();
+    return std::string{ rhs.data() } + lhs.data();
 }
 
-std :: string operator + (
+std::string operator + (
     const char* rhs,
-    const std :: string_view& lhs
+    const std::string_view& lhs
 ) {
-    return std :: string{ rhs } + lhs.data();
+    return std::string{ rhs } + lhs.data();
 }
 
-std :: string operator + (
-    const std :: string_view& rhs,
+std::string operator + (
+    const std::string_view& rhs,
     const char* lhs
 ) {
-    return std :: string{ rhs.data() } + lhs;
+    return std::string{ rhs.data() } + lhs;
 }
 
-std :: string operator + (
-    const std :: string_view& rhs,
+std::string operator + (
+    const std::string_view& rhs,
     const char& lhs
 ) {
-    return std :: string{ rhs.data() } + lhs;
+    return std::string{ rhs.data() } + lhs;
 }
 
 
 #if 1
-double close_match( std :: string_view str, std :: string_view target ) {
+double close_match( std::string_view str, std::string_view target ) {
     constexpr int64_t   offsets[]   = { 0, 1, -1 };
     int64_t             at          = 0;
     double              matches     = 0.0;
@@ -392,10 +468,10 @@ double close_match( std :: string_view str, std :: string_view target ) {
         ++at;
     }
 
-    return pow( matches / std :: max( str.length(), target.length() ), 1.0 );
+    return pow( matches / std::max( str.length(), target.length() ), 1.0 );
 }
 #else
-double close_match( std :: string_view str, std :: string_view target ) {
+double close_match( std::string_view str, std::string_view target ) {
     constexpr int64_t   rad_right   = 1;
     constexpr int64_t   rad_left    = 1;
     int64_t             last        = 0;
@@ -416,12 +492,12 @@ double close_match( std :: string_view str, std :: string_view target ) {
         ++last;
     }
 
-    return matches / std :: max( str.length(), target.length() );
+    return matches / std::max( str.length(), target.length() );
 }
 
-double close_match( std :: string_view str, std :: string_view target ) {
+double close_match( std::string_view str, std::string_view target ) {
     if( target.length() < str.length() )
-        std :: swap( target, str );
+        std::swap( target, str );
 
     double diff[ target.length() ];
 
@@ -431,12 +507,12 @@ double close_match( std :: string_view str, std :: string_view target ) {
         diff[ idx ] *= diff[ idx ];
     }
 
-    double accd = std :: accumulate( diff, diff + target.length(), 0.0 );
+    double accd = std::accumulate( diff, diff + target.length(), 0.0 );
 
     for( size_t idx = 0; idx < target.length(); ++idx )
         diff[ idx ] = target[ idx ] * target[ idx ];
 
-    double native = std :: accumulate( diff, diff + target.length(), 0.0 );
+    double native = std::accumulate( diff, diff + target.length(), 0.0 );
 
     return ( native - accd ) / native;
 }
@@ -446,7 +522,7 @@ double close_match( std :: string_view str, std :: string_view target ) {
 
 class Has_id {
 public:
-    using type = std :: string_view;
+    using type = std::string_view;
 
 public:
     Has_id() = default;
@@ -469,12 +545,12 @@ public:
 
 class Sound {
 public:
-    static std :: string path_of( const std :: string_view& name ) {
+    static std::string path_of( const std::string_view& name ) {
         return SOUNDS_PATH_MASTER + '\\' + name + ".mp3";
     }
 
-    static bool exists( const std :: string_view& name ) {
-        return static_cast< bool >( std :: ifstream{ Sound :: path_of( name ) } );
+    static bool exists( const std::string_view& name ) {
+        return static_cast< bool >( std::ifstream{ Sound::path_of( name ) } );
     }
 
 };
@@ -484,16 +560,16 @@ public:
 class File {
 public:
     static void overwrite(
-        const std :: string_view& dir,
-        const std :: string_view& name,
+        const std::string_view& dir,
+        const std::string_view& name,
         const auto& content
     ) {
         auto path = dir + '\\' + name;
 
-        std :: ofstream file{ path };
+        std::ofstream file{ path };
 
         if( !file ) {
-            std :: filesystem :: create_directories( dir );
+            std::filesystem::create_directories( dir );
 
             file.open( path );
         }
@@ -503,16 +579,16 @@ public:
 
     template< typename T >
     static T read(
-        const std :: string_view& dir,
-        const std :: string_view& name,
+        const std::string_view& dir,
+        const std::string_view& name,
         const T& default_content = {}
     ) {
         auto path = dir + '\\' + name;
 
-        std :: ifstream file{ path };
+        std::ifstream file{ path };
 
         if( !file ) {
-            File :: overwrite( dir, name, default_content );
+            File::overwrite( dir, name, default_content );
 
             return default_content;
         }
@@ -527,8 +603,8 @@ public:
 public:
     template< typename ...Args >
     static void for_each(
-        const std :: string_view& dir,
-        const std :: string_view& name,
+        const std::string_view& dir,
+        const std::string_view& name,
         const auto& op
     ) {
         _for_each< Args... >(
@@ -540,17 +616,17 @@ public:
 private:
     template< typename ...Args >
     static void _for_each(
-        const std :: string_view& dir,
-        const std :: string_view& name,
+        const std::string_view& dir,
+        const std::string_view& name,
         const auto& op,
         Args... args
     ) {
         auto path = dir + '\\' + name;
 
-        std :: ifstream file( path );
+        std::ifstream file( path );
 
         if( !file ) {
-            File :: overwrite( dir, name, "" );
+            File::overwrite( dir, name, "" );
 
             return;
         }
@@ -559,7 +635,7 @@ private:
         while( !file.eof() ) {
             ( ( file >> args ),... );
 
-            std :: invoke( op, args... );
+            std::invoke( op, args... );
         }
     }
 
@@ -567,22 +643,22 @@ private:
 
 
 
-class Stream : public std :: ostringstream {
+class Stream : public std::ostringstream {
 public:
-    using Base = std :: ostringstream;
+    using Base = std::ostringstream;
 
 public:
     Stream() = default;
 
-    using Base :: Base;
+    using Base::Base;
 
 public:
-    operator std :: string() const {
-        return this -> str();
+    operator std::string() const {
+        return this->str();
     }
 
-    operator std :: string_view () const {
-        return this -> view();
+    operator std::string_view () const {
+        return this->view();
     }
 
 };
@@ -594,7 +670,7 @@ public:
 class Setting {
 public:
     static void voice_hi_wait_to( size_t value ) {
-        File :: overwrite(
+        File::overwrite(
             SETTINGS_PATH_MASTER,
             SETTINGS_PATH_VOICE_HI_WAIT,
             value
@@ -602,7 +678,7 @@ public:
     }
 
     static size_t voice_hi_wait() {
-        return File :: read< size_t >(
+        return File::read< size_t >(
             SETTINGS_PATH_MASTER,
             SETTINGS_PATH_VOICE_HI_WAIT,
             1500
@@ -623,37 +699,37 @@ public:
 public:
     Guild() = default;
 
-    using Has_id :: Has_id;
+    using Has_id::Has_id;
 
 public:
     double mul() const {
-        return File :: read< double >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        return File::read< double >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_MUL,
             1.0
         );
     }
 
     void mul_to( double value ) {
-        File :: overwrite(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::overwrite(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_MUL,
             value
         );
     }
 
 public:
-    void prefix_to( const std :: string_view& value ) {
-        File :: overwrite(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+    void prefix_to( const std::string_view& value ) {
+        File::overwrite(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_PREFIX,
             value
         );
     }
 
-    std :: string prefix() {
-        return File :: read< std :: string >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+    std::string prefix() {
+        return File::read< std::string >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_PREFIX,
             GUILDS_DEFAULT_PREFIX
         );
@@ -663,15 +739,15 @@ public:
     auto voice_auto_plays() {
         Voice_auto_plays_pairs pairs{};
 
-        File :: for_each< std :: string, double >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::for_each< std::string, double >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_AUTO_VOICE_PLAYS,
 
-            [ & ] ( std :: string& sound, double& prob ) -> void {
+            [ & ] ( std::string& sound, double& prob ) -> void {
                 if( sound.empty() )
                     return;
 
-                pairs.emplace_back( std :: move( sound ), prob );
+                pairs.emplace_back( std::move( sound ), prob );
             }
         );
 
@@ -679,17 +755,17 @@ public:
     }
 
     void voice_auto_plays_to( Voice_auto_plays_pairs& pairs ) {
-        std :: stringstream formated{};
+        std::stringstream formated{};
 
-        std :: sort( pairs.begin(), pairs.end(), [] ( auto& pair1, auto& pair2 ) -> bool {
+        std::sort( pairs.begin(), pairs.end(), [] ( auto& pair1, auto& pair2 ) -> bool {
             return pair1.second > pair2.second;
         } );
 
         for( auto& pair : pairs )
             formated << pair.first << ' ' << pair.second << '\n';
 
-        File :: overwrite(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::overwrite(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_AUTO_VOICE_PLAYS,
             formated.str()
         );
@@ -712,16 +788,16 @@ public:
 
 public:
     void rig_to( double value ) {
-        File :: overwrite(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::overwrite(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_GAMBLE_RIG,
             value
         );
     }
 
     double rig() {
-        return File :: read< double >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        return File::read< double >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_GAMBLE_RIG,
             0.0
         );
@@ -729,16 +805,16 @@ public:
 
 public:
     void steal_chance_to( double value ) {
-        File :: overwrite(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::overwrite(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_STEAL_CHANCE,
             value
         );
     }
 
     double steal_chance() {
-        return File :: read< double >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        return File::read< double >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_STEAL_CHANCE,
             0.36
         );
@@ -746,27 +822,27 @@ public:
 
 public:
     void ticks_voice_to( size_t low, size_t high ) {
-        File :: overwrite< std :: string >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::overwrite< std::string >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_TICK_VOICE,
             ( Stream{} << low << ' ' << high ).str()
         );
     }
 
     Tick_pair ticks_voice() {
-        std :: optional< std :: pair< size_t, size_t > > values{};
+        std::optional< std::pair< size_t, size_t > > values{};
 
-        File :: for_each< size_t, size_t >(
-            GUILDS_PATH_MASTER + '\\' + this -> _id,
+        File::for_each< size_t, size_t >(
+            GUILDS_PATH_MASTER + '\\' + this->_id,
             GUILDS_PATH_TICK_VOICE,
 
             [ & ] ( size_t& low, size_t& high ) -> void {
-                values = std :: make_pair( low, high );
+                values = std::make_pair( low, high );
             }
         );
 
         if( !values.has_value() ) {
-            values = std :: make_pair( 600, 1800 );
+            values = std::make_pair( 600, 1800 );
 
             ticks_voice_to( values.value().first, values.value().second );
         }
@@ -774,8 +850,8 @@ public:
         return values.value();
     }
 
-    size_t pull( Tick_pair ( Guild :: *method )() ) {
-        auto ticks = std :: invoke( method, this );
+    size_t pull( Tick_pair ( Guild::*method )() ) {
+        auto ticks = std::invoke( method, this );
 
         auto diff = ticks.second - ticks.first + 1;
 
@@ -793,12 +869,12 @@ class User : public Has_id {
 public:
     User() = default;
 
-    using Has_id :: Has_id;
+    using Has_id::Has_id;
 
 public:
     void credits_to( int64_t value, Guild guild ) {
-        File :: overwrite(
-            USERS_PATH_MASTER + '\\' + this -> _id
+        File::overwrite(
+            USERS_PATH_MASTER + '\\' + this->_id
                               + '\\' + USERS_PATH_GUILD
                               + '\\' + guild.id(),
             USERS_PATH_GUILD_CREDITS,
@@ -807,8 +883,8 @@ public:
     }
 
     int64_t credits( Guild guild ) {
-        return File :: read< int64_t >(
-            USERS_PATH_MASTER + '\\' + this -> _id
+        return File::read< int64_t >(
+            USERS_PATH_MASTER + '\\' + this->_id
                               + '\\' + USERS_PATH_GUILD
                               + '\\' + guild.id(),
             USERS_PATH_GUILD_CREDITS,
@@ -817,75 +893,75 @@ public:
     }
 
     void credits_add( int64_t value, Guild guild ) {
-        this -> credits_to(
-            ( this -> credits( guild ) + value ),
+        this->credits_to(
+            ( this->credits( guild ) + value ),
             guild
         );
     }
 
     void credits_sub( int64_t value, Guild guild ) {
-        this -> credits_to(
-            this -> credits( guild ) - value,
+        this->credits_to(
+            this->credits( guild ) - value,
             guild
         );
     }
 
 public:
-    void voice_hi_to( const std :: string_view& sound ) {
-        File :: overwrite(
-            USERS_PATH_MASTER + '\\' + this -> _id,
+    void voice_hi_to( const std::string_view& sound ) {
+        File::overwrite(
+            USERS_PATH_MASTER + '\\' + this->_id,
             USERS_PATH_VOICE_HI,
             sound
         );
     }
 
-    std :: string voice_hi() {
-        return File :: read< std :: string >(
-            USERS_PATH_MASTER + '\\' + this -> _id,
+    std::string voice_hi() {
+        return File::read< std::string >(
+            USERS_PATH_MASTER + '\\' + this->_id,
             USERS_PATH_VOICE_HI,
             "hello_1"
         );
     }
 
-    void voice_bye_to( const std :: string_view& sound ) {
-        File :: overwrite(
-            USERS_PATH_MASTER + '\\' + this -> _id,
+    void voice_bye_to( const std::string_view& sound ) {
+        File::overwrite(
+            USERS_PATH_MASTER + '\\' + this->_id,
             USERS_PATH_VOICE_BYE,
             sound
         );
     }
 
-    std :: string voice_bye() {
-        return File :: read< std :: string >(
-            USERS_PATH_MASTER + '\\' + this -> _id,
+    std::string voice_bye() {
+        return File::read< std::string >(
+            USERS_PATH_MASTER + '\\' + this->_id,
             USERS_PATH_VOICE_BYE,
             "bye_bye"
         );
     }
 
 public:
-    static std :: string make_id( std :: string_view str ) {
-        auto first = std :: find_if( str.begin(), str.end(), [] ( const char& c ) -> bool {
-            return std :: isdigit( c );
+    static std::string make_id( std::string_view str ) {
+        auto first = std::find_if( str.begin(), str.end(), [] ( const char& c ) -> bool {
+            return std::isdigit( c );
         } );
 
-        auto last = &*std :: find_if( str.rbegin(), str.rend(), [] ( const char& c ) -> bool {
-            return std :: isdigit( c );
+        auto last = &*std::find_if( str.rbegin(), str.rend(), [] ( const char& c ) -> bool {
+            return std::isdigit( c );
         } );
 
 
         if( first >= last ) return "";
 
 
-        std :: string id{ first, last - first + 1ULL };
+        std::string id{ first, last - first + 1ULL };
 
 
         if( id.length() != 18 && id.length() != 19 ) return "";
 
 
         if(
-            std :: find_if( id.begin(), id.end(), [] ( const char& c ) -> bool {
-                return !std :: isdigit( c );
+            std::find_if( id.begin(), id.end(), [] ( const char& c ) -> bool {
+                return !std::isdigit( c );
             } )
             !=
             id.end()
@@ -904,14 +980,14 @@ public:
 
 struct Embed {
 public:
-    const std :: string_view&   title         = {};
-    const std :: string_view&   description   = {};
-    const std :: string_view&   color         = {};
-    const std :: string_view&   image         = {};
+    const std::string_view&   title         = {};
+    const std::string_view&   description   = {};
+    const std::string_view&   color         = {};
+    const std::string_view&   image         = {};
 
 public:
     void outbound() {
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_EMBED
             << ( title.empty() ? " " : title )
 
@@ -933,24 +1009,24 @@ public:
 
 class Instruc {
 public:
-    using Keyword = std :: tuple< int, std :: vector< std :: string_view > >;
+    using Keyword = std::tuple< int, std::vector< std::string_view > >;
 
-    using Function = std :: function< void( Guild, User, Ref< Inbounds > ) >;
+    using Function = std::function< void( Guild, User, Ref< Inbounds > ) >;
 
-    using Map = std :: map< size_t, Function >;
+    using Map = std::map< size_t, Function >;
 
 public:
     static void execute( Guild guild, User user, Ref< Inbounds > ins ) {
-        if( std :: tolower( ins.at( 0 ).at( 0 ) ) == GUILDS_AHRI_PREFIX[ 0 ] ) {
-            std :: for_each( ins.at( 0 ).begin(), ins.at( 0 ).end(), [] ( char& c ) -> void {
-                c = std :: tolower( c );
+        if( std::tolower( ins.at( 0 ).at( 0 ) ) == GUILDS_AHRI_PREFIX[ 0 ] ) {
+            std::for_each( ins.at( 0 ).begin(), ins.at( 0 ).end(), [] ( char& c ) -> void {
+                c = std::tolower( c );
             } );
 
             if( ins.at( 0 ) != GUILDS_AHRI_PREFIX ) return;
 
             ins.pop_front();
 
-            Python :: main( guild, user, ins );
+            Python::main( guild, user, ins );
 
             return;
         }
@@ -967,22 +1043,16 @@ public:
 
 
         try {
-            std :: invoke( make_sense_of_2( ins ), guild, user, ins );
+            std::invoke( make_sense_of_2( ins ), guild, user, ins );
 
-        } catch( std :: out_of_range& err ) {
+        } catch( std::out_of_range& err ) {
             what( guild, user, ins );
 
-        } catch( std :: runtime_error& err ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE
-                << "<execute>: STD RTE";
-
-            std :: cerr << '\n' << err.what();
+        } catch( std::runtime_error& err ) {
+            DebugLayer::push( DebugLayer::ERRORS, "<execute>: "s + err.what() );
 
         } catch( ... ) {
-            std :: cout
-                << OUTBOUND_REPLY_MESSAGE
-                << "<execute>: UNKNOWN RTE";
+            DebugLayer::push( DebugLayer::ERRORS, "<execute>: Unknown RTE." );
         }
     }
 
@@ -994,18 +1064,18 @@ public:
         Ref< Inbounds > ins,
         const bool      first_time = true
     ) {
-        std :: string               chain{};
-        std :: vector< Keyword* >   kws{};
+        std::string               chain{};
+        std::vector< Keyword* >   kws{};
 
         kws.reserve( ins.size() );
 
-  
+
         for( auto itr = ins.begin(); itr != ins.end(); ) {
-            auto found = std :: find_if(
+            auto found = std::find_if(
                 keywords.begin(), keywords.end(),
 
                 [ & ] ( auto& entry ) -> bool {
-                    for( auto& alias : std :: get< 1 >( entry ) )
+                    for( auto& alias : std::get< 1 >( entry ) )
                         if( *itr == alias )
                             return true;
 
@@ -1017,7 +1087,7 @@ public:
                 found == keywords.end()
                 ||
                 (
-                    std :: find_if( kws.begin(), kws.end(), [ & ] ( auto& kw ) -> bool {
+                    std::find_if( kws.begin(), kws.end(), [ & ] ( auto& kw ) -> bool {
                         return &*found == &*kw;
                     } ) != kws.end()
                 )
@@ -1033,23 +1103,23 @@ public:
         }
 
 
-        std :: sort( kws.begin(), kws.end(), [] ( const auto& kw_1, const auto& kw_2 ) -> bool {
-            return std :: get< 0 >( *kw_1 ) < std :: get< 0 >( *kw_2 );
+        std::sort( kws.begin(), kws.end(), [] ( const auto& kw_1, const auto& kw_2 ) -> bool {
+            return std::get< 0 >( *kw_1 ) < std::get< 0 >( *kw_2 );
         } );
 
 
         for( auto& kw : kws )
-            chain += std :: get< 1 >( *kw )[ 0 ];
+            chain += std::get< 1 >( *kw )[ 0 ];
 
 
-        auto sense = std :: hash< std :: string_view >{}( chain );
+        auto sense = std::hash< std::string_view >{}( chain );
 
         if( !first_time || map.contains( sense ) )
             return sense;
 
 
         for( auto& kw : kws )
-            ins.push_front( std :: get< 1 >( *kw ).front().data() );
+            ins.push_front( std::get< 1 >( *kw ).front().data() );
 
 
         if( try_sound_play( guild, user, ins ) )
@@ -1061,16 +1131,16 @@ public:
 
     static Ref< Inbounds > calibrate_ins( Ref< Inbounds > ins ) {
         for( auto& in : ins ) {
-            std :: pair< double, Keyword* > best_match{};
+            std::pair< double, Keyword* > best_match{};
 
             for( auto& kw : keywords )
-                for( auto& alias : std :: get< 1 >( kw ) )
+                for( auto& alias : std::get< 1 >( kw ) )
                     if( double match = close_match( in, alias ); match > 0.5 )
                         if( match > best_match.first )
-                            best_match = std :: make_pair( match, &kw );
+                            best_match = std::make_pair( match, &kw );
 
             if( best_match.second )
-                in = std :: get< 1 >( *best_match.second )[ 0 ];
+                in = std::get< 1 >( *best_match.second )[ 0 ];
         }
 
 
@@ -1078,18 +1148,18 @@ public:
     }
 
     static bool try_sound_play( Guild guild, User user, Ref< Inbounds > ins ) {
-        auto try_play = [ & ] ( const std :: string& sound ) -> bool {
-            if( !Sound :: exists( sound ) )
+        auto try_play = [ & ] ( const std::string& sound ) -> bool {
+            if( !Sound::exists( sound ) )
                 return false;
 
-            ins.push_front( std :: move( sound ) );
+            ins.push_front( std::move( sound ) );
 
-            Instruc :: Voices :: play( guild, user, ins );
+            Instruc::Voices::play( guild, user, ins );
 
             return true;
         };
 
-        std :: string sound{};
+        std::string sound{};
 
         for( auto& sound_part : ins ) {
             sound += sound_part;
@@ -1104,63 +1174,108 @@ public:
     }
 
 */
-    
 
-    static Function extract_instruction_sense_2( 
+
+    static Function extract_instruction_sense_2(
         Ref< Inbounds > ins
     ) {
-        // to be checked: auto deq = static_cast< Inbounds :: Base >( ins );
+        // to be checked: auto deq = static_cast< Inbounds::Base >( ins );
 
-        Inbounds :: Base deq{ ins.begin(), ins.end() };
+        Inbounds::Base deq{ ins.begin(), ins.end() };
 
         calibrate_ins_2( deq );
 
-        std :: vector< Keyword* > found_kws{}; 
+        std::vector< std::pair< Keyword*, std::string& > > kws{};
 
-        for( auto& entry : deq ) {
+        for( auto entry = deq.begin(); entry != deq.end(); ++entry ) {
             auto itr = std::find_if( keywords.begin(), keywords.end(), [ & ] ( auto& kw ) -> bool {
                 for( auto& alias : std ::get< 1 >( kw ) )
-                    if( entry == alias )
+                    if( *entry == alias )
                         return true;
-                
+
                 return false;
             } );
 
             if( itr == keywords.end() ) continue;
 
-            found_kws.push_back( &*itr );
+            kws.emplace_back( &*itr, *( deq.begin() + std::distance( deq.begin(), entry ) ) );
         }
 
-        std :: sort( found_kws.begin(), found_kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
-            return std :: get< 0 >( *kw_1 ) > std :: get< 0 >( *kw_2 );
+        std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
+            return ( std::get< 0 >( *kw_1.first ) > std::get< 0 >( *kw_2.first ) );
         } );
 
 
-        uint64_t combs = std :: pow( 2, found_kws.size() ) - 1;
+        DebugLayer::if_uplinked( [ & ] {
+             for( auto& kw : kws )
+                DebugLayer::push( "<extract_instruction_sense_2>: matched keywords", std::get< 1 >( *kw.first )[ 0 ] );
+        } );
+
+
+        uint64_t combs = std::pow( 2, kws.size() ) - 1;
 
         for( ; combs != 0; --combs ) {
-            std :: string chain{};
+            std::string chain{};
 
-            for( int64_t offs = found_kws.size() - 1; offs >= 0; --offs )
+            for( int64_t offs = kws.size() - 1; offs >= 0; --offs )
                 if( ( combs >> offs ) & 1 )
-                    chain += std :: get< 1 >( *found_kws[ offs ] ).front();
+                    chain += std::get< 1 >( *kws[ offs ].first ).front();
 
-            auto sense = std :: hash< std :: string_view >{}( chain );
+            auto sense = std::hash< std::string_view >{}( chain );
 
             try {
                 Function op = map.at( sense );
 
-                auto    itr  = ins.begin(); 
-                int64_t offs = found_kws.size() - 1;
+                DebugLayer::if_uplinked( [ & ] {
+                    DebugLayer::push( "<extract_instruction_sense_2>: extracted", chain );
+                } );
 
-                for( ; itr != ins.end(); ) {
-                    if( ( combs >> offs ) & 1 )
-                        itr = ins.erase( itr );
-                    else
-                        ++itr;
+                std::remove_if( ins.begin(), ins.end(), [ & ] ( auto& in ) -> bool {
+                    auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {
+                        return in == kw.second;
+                    } );
 
-                    --offs; 
+                    if( itr == kws.end() ) return false;
+
+                    if( ( combs >> ( std::distance( kws.begin(), itr ) ) ) & 1 ) return true;
+
+                    return false;
+                } );
+
+                /*
+                std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
+                    bool swap = kw_1.second < kw_2.second;
+
+                    if( !swap ) return false;
+
+                    auto offs_1 = &kw_1 - kws.data();
+                    auto offs_2 = &kw_2 - kws.data();
+
+                    bool bit_1 = ( combs >> offs_1 ) & 1;
+                    bool bit_2 = ( combs >> offs_2 ) & 1;
+
+                    bit_1 ? ( combs |= ( 1 << offs_2 ) ) : ( combs &= ~( 1 << offs_2 ) );
+                    bit_2 ? ( combs |= ( 1 << offs_1 ) ) : ( combs &= ~( 1 << offs_1 ) );
+
+                    return true;
+                } );
+
+                for( auto itr = kws.rbegin(); itr != kws.rend(); ++itr ) {
+                    if( !( ( combs >> std::distance( itr, kws.rend() - 1 ) ) & 1 ) ) continue;
+
+                    auto tbr = ins.begin();
+
+                    std::advance( tbr, itr->second );
+
+                    ins.erase( tbr );
                 }
+                */
+
+                DebugLayer::if_uplinked( [ & ] {
+                    for( auto& in : ins )
+                        DebugLayer::push( "<extract_instruction_sense_2>: remaining words", in );
+                } );
+                
 
                 return op;
             } catch( ... ) {
@@ -1174,20 +1289,20 @@ public:
     static Function extract_sound_sense_2(
         Ref< Inbounds > ins
     ) {
-        std :: string sound{};
+        std::string sound{};
 
         for( auto& in : ins )
             ( sound += in ) += '_';
 
-        sound.pop_back(); sound += ".mp3"; 
+        sound.pop_back(); sound += ".mp3";
 
 
-        std :: pair< double, std :: string > best_match{ 0.5, "" };
+        std::pair< double, std::string > best_match{ 0.5, "" };
 
-        for( auto& file : std :: filesystem :: directory_iterator{ SOUNDS_PATH_MASTER } ) { 
-            std :: string entry{ file.path().string().substr( 13 ) };
+        for( auto& file : std::filesystem::directory_iterator{ SOUNDS_PATH_MASTER } ) {
+            std::string entry{ file.path().string().substr( 13 ) };
 
-           
+
             if( sound == entry ) {
                 best_match.second = sound;
 
@@ -1195,7 +1310,7 @@ public:
             }
 
             if( double match = close_match( sound, entry ); match > best_match.first )
-                best_match = { match, std :: move( entry ) }; 
+                best_match = { match, std::move( entry ) };
         }
 
 
@@ -1219,30 +1334,37 @@ public:
 
 
         for( auto extract_op : extract_order ) {
-            Function extracted = std :: invoke( extract_op, ins );
+            Function extracted = std::invoke( extract_op, ins );
 
             if( extracted ) return extracted;
         }
 
-    
-        throw std :: out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
+
+        throw std::out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
 
         return nullptr;
     }
 
     static void calibrate_ins_2( auto& container ) {
         for( auto& entry : container ) {
-            std :: pair< double, Keyword* > best_match{ 0.5, nullptr };
+            std::pair< double, Keyword* > best_match{ 0.5, nullptr };
 
             for( auto& kw : keywords )
-                for( auto& alias : std :: get< 1 >( kw ) )
+                for( auto& alias : std::get< 1 >( kw ) )
                     if( entry == alias )
                         goto L_PERFECT_MATCH;
                     else if( double match = close_match( entry, alias ); match > best_match.first )
-                        best_match = std :: make_pair( match, &kw );
+                        best_match = { match, &kw };
 
-            if( best_match.second )
-                entry = std :: get< 1 >( *best_match.second )[ 0 ];
+            if( best_match.second ) {
+                auto match = std::get< 1 >( *best_match.second )[ 0 ];
+
+                if( DebugLayer::has_uplink() ) {
+                    DebugLayer::push( "<calibrate_ins_2>: replaces", Stream{} << entry << " -> " << match << " @**" << best_match.first << "**" );
+                }
+
+                entry = match;
+            }
 
             L_PERFECT_MATCH: continue;
         }
@@ -1256,7 +1378,7 @@ public:
     GUI_OP( nop ) {}
 
     GUI_OP( what ) {
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_MESSAGE
             << "Whaaaat are you sayinnnnn...";
     }
@@ -1267,7 +1389,7 @@ public:
             ||
             !ins.at( 0 ).ends_with( '\"' )
         ) {
-            std :: cout
+            std::cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "Enclose the string in double quotes first.";
 
@@ -1276,25 +1398,25 @@ public:
 
         ins.at( 0 ) = ins.at( 0 ).substr( 1, ins.at( 0 ).size() - 2 );
 
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_MESSAGE
-            << std :: hash< std :: remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
+            << std::hash< std::remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
     };
 
 public:
     GUI_OP( kiss ) {
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/heart-ahri-love-gif-18791933";
 
 
         ins.emplace_front( "kiss_1" );
 
-        Instruc :: Voices :: play( guild, user, ins );
+        Instruc::Voices::play( guild, user, ins );
     }
 
     GUI_OP( pet ) {
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_MESSAGE
             << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
     }
@@ -1315,55 +1437,55 @@ public:
             "https://tenor.com/view/noucome-oppai-smack-anime-ayame-reikadou-gif-20051530"
         };
 
-        std :: cout
+        std::cout
             << OUTBOUND_REPLY_MESSAGE
-            << gifs[ RANDOM % std :: size( gifs ) ];
+            << gifs[ RANDOM % std::size( gifs ) ];
     }
 
 public:
     struct Voices {
         GUI_OP( connect ) {
             if( ins.user_voice_id().empty() ) {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "Where are you...";
 
                 return;
             }
 
-            std :: cout
+            std::cout
                 << OUTBOUND_VOICE_CONNECT
                 << ins.user_voice_id();
         }
 
         GUI_OP( disconnect ) {
-            std :: cout
+            std::cout
                 << OUTBOUND_VOICE_DISCONNECT
                 << guild.id();
         }
 
         GUI_OP( play ) {
-            std :: cout
+            std::cout
             << OUTBOUND_VOICE_PLAY
             << guild.id()
             << OUTBOUND_LOW_SPLIT
-            << Sound :: path_of( ins.at( 0 ) );
+            << Sound::path_of( ins.at( 0 ) );
         }
 
         GUI_OP( stop ) {
-            std :: cout
+            std::cout
                 << OUTBOUND_VOICE_STOP
                 << guild.id();
         }
 
         GUI_OP( sounds_show ) {
-        std :: string path{};
+        std::string path{};
 
         path.reserve( PATH_MAX );
 
-        std :: string accumulated{};
+        std::string accumulated{};
 
-        for( auto& file : std :: filesystem :: directory_iterator( SOUNDS_PATH_MASTER ) ) {
+        for( auto& file : std::filesystem::directory_iterator( SOUNDS_PATH_MASTER ) ) {
             path = file.path().string();
 
             size_t slash_end = path.find_last_of( '\\' ) + 1;
@@ -1392,9 +1514,9 @@ public:
     struct Settings {
         GUI_OP( voice_wait_set ) {
             try {
-                Setting :: voice_hi_wait_to( std :: abs( std :: stod( ins.at( 0 ) ) ) * 1000.0 );
+                Setting::voice_hi_wait_to( std::abs( std::stod( ins.at( 0 ) ) ) * 1000.0 );
 
-                auto value = static_cast< double >( Setting :: voice_hi_wait() );
+                auto value = static_cast< double >( Setting::voice_hi_wait() );
 
                 Embed{
                     title:
@@ -1409,7 +1531,7 @@ public:
 
                 }.outbound();
 
-            } catch( const std :: invalid_argument& err ) {
+            } catch( const std::invalid_argument& err ) {
                 Embed{
                     title: "Try again after looking at this: ",
 
@@ -1419,7 +1541,7 @@ public:
 
                 }.outbound();
 
-            } catch( const std :: out_of_range& err ) {
+            } catch( const std::out_of_range& err ) {
                 Embed{
                     title: "I can't count that much...",
 
@@ -1435,7 +1557,7 @@ public:
                     title:
                         Stream{}
                         << "Waiting **"
-                        << static_cast< double >( Setting :: voice_hi_wait() ) / 1000.0
+                        << static_cast< double >( Setting::voice_hi_wait() ) / 1000.0
                         << "** seconds before saying hi!",
 
                     color: EMBEDS_COLOR_INFO
@@ -1469,7 +1591,7 @@ public:
             }
 
             L_NOT_ELIGIBLE: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "**" GUILDS_AHRI_PREFIX "**"
                     << " is not eligible as an instruction prefix.";
@@ -1498,20 +1620,20 @@ public:
 
             auto payload
             =
-            ins.for_each< std :: string, double >(
+            ins.for_each< std::string, double >(
                 {
-                    [] ( const std :: string& in ) -> std :: string {
+                    [] ( const std::string& in ) -> std::string {
                         return in;
                     },
 
-                    [] ( std :: string& match, auto& payload ) -> bool {
-                        return Sound :: exists( match );
+                    [] ( std::string& match, auto& payload ) -> bool {
+                        return Sound::exists( match );
                     }
                 },
 
                 {
-                    [] ( const std :: string& in ) -> double {
-                        return std :: stod( in );
+                    [] ( const std::string& in ) -> double {
+                        return std::stod( in );
                     },
 
                     [] ( double& match, auto& payload ) -> bool {
@@ -1521,10 +1643,10 @@ public:
                     }
                 },
 
-                [ & ] ( std :: string& sound, double& prob, auto& payload ) -> void {
+                [ & ] ( std::string& sound, double& prob, auto& payload ) -> void {
                     auto pairs = guild.voice_auto_plays();
 
-                    std :: erase_if( pairs, [ & ] ( auto& pair ) -> bool {
+                    std::erase_if( pairs, [ & ] ( auto& pair ) -> bool {
                         return pair.first == sound;
                     } );
 
@@ -1572,7 +1694,7 @@ public:
             }
 
             L_NO_SOUND: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "Double-check the sound cutey.";
 
@@ -1580,7 +1702,7 @@ public:
             }
 
             L_NO_PROB: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "Need a probability between 0 and 1.";
 
@@ -1589,7 +1711,7 @@ public:
         }
 
         GUI_OP( voice_auto_plays_clear ) {
-            File :: overwrite(
+            File::overwrite(
                 GUILDS_PATH_MASTER + '\\' + guild.id(),
                 GUILDS_PATH_AUTO_VOICE_PLAYS,
                 ""
@@ -1616,7 +1738,7 @@ public:
             }
 
 
-            std :: stringstream accumulated;
+            std::stringstream accumulated;
 
             for( auto& pair : pairs )
                 accumulated << pair.first << " ---** " << pair.second << "**\n";
@@ -1640,8 +1762,8 @@ public:
             =
             ins.for_each< double >(
                 {
-                    [] ( const std :: string& in ) -> double {
-                        return std :: stod( in );
+                    [] ( const std::string& in ) -> double {
+                        return std::stod( in );
                     },
 
                     [] ( double& match, auto& payload ) -> bool {
@@ -1677,7 +1799,7 @@ public:
 
 
             L_RIG_NOT_IN_RANGE: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "The rig value shall be between **0.0** and **1.0**.";
 
@@ -1685,7 +1807,7 @@ public:
             }
 
             L_NO_RIG_VALUE: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "I need a rig value between **0.0** and **1.0**.";
 
@@ -1713,8 +1835,8 @@ public:
             =
             ins.for_each< double >(
                 {
-                    [] ( const std :: string& in ) -> double {
-                        return std :: stod( in );
+                    [] ( const std::string& in ) -> double {
+                        return std::stod( in );
                     },
 
                     [] ( double& match, auto& payload ) -> bool {
@@ -1747,7 +1869,7 @@ public:
 
 
             L_CHANCE_NOT_IN_RANGE: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "The chance shall be between **0.0** and **1.0**.";
 
@@ -1755,7 +1877,7 @@ public:
             }
 
             L_NO_CHANCE_VALUE: {
-                std :: cout
+                std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "I need a chance between **0.0** and **1.0**.";
 
@@ -1780,19 +1902,19 @@ public:
             };
 
 
-            auto build_process = [] ( const std :: string& in ) -> size_t {
-                return std :: stoull( in );
+            auto build_process = [] ( const std::string& in ) -> size_t {
+                return std::stoull( in );
             };
 
             auto build_confirm = [] ( size_t& match, auto& payload ) -> bool {
                 payload[ MATCH_FOUND ] = true;
 
-                return payload[ IN_RANGE ] = payload[ IN_RANGE ] | Guild :: tick_in_range( match );
+                return payload[ IN_RANGE ] = payload[ IN_RANGE ] | Guild::tick_in_range( match );
             };
 
 
             size_t                    low  = {};
-            std :: optional< size_t > high = {};
+            std::optional< size_t > high = {};
 
 
             auto payload
@@ -1832,13 +1954,13 @@ public:
                 high = low;
             else
                 if( low > high.value() )
-                    std :: swap( low, high.value() );
+                    std::swap( low, high.value() );
 
             guild.ticks_voice_to( low, high.value() );
 
 
             {
-                std :: cout
+                std::cout
                     << OUTBOUND_TICK_GUILD_RESET
                     << guild.id()
                     << OUTBOUND_LOW_SPLIT
@@ -1874,7 +1996,7 @@ public:
 
 
             L_NO_TICK: {
-                std :: cout
+                std::cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "How many seconds?";
 
@@ -1882,12 +2004,12 @@ public:
             }
 
             L_NOT_IN_RANGE: {
-                std :: cout
+                std::cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "The ticks must be over **"
-                << Guild :: tick_min
+                << Guild::tick_min
                 << "** seconds and under **"
-                << Guild :: tick_max
+                << Guild::tick_max
                 << "** seconds.";
 
                 return;
@@ -1959,24 +2081,24 @@ public:
         };
 
         GUI_OP( voice_hi_set ) {
-            voice_sound_set( guild, user, ins, User :: voice_hi_to, "intro" );
+            voice_sound_set( guild, user, ins, User::voice_hi_to, "intro" );
         }
 
         GUI_OP( voice_bye_set ) {
-            voice_sound_set( guild, user, ins, User :: voice_bye_to, "outro" );
+            voice_sound_set( guild, user, ins, User::voice_bye_to, "outro" );
         }
 
         static void voice_sound_set(
             Guild              guild,
             User               user,
             Ref< Inbounds >    ins,
-            auto ( User ::    *method ) ( auto ),
-            std :: string_view type
+            auto ( User::   *method ) ( auto ),
+            std::string_view type
         ) {
-            std :: string_view sound{};
+            std::string_view sound{};
 
             for( auto& in : ins )
-                if( Sound :: exists( in ) ) {
+                if( Sound::exists( in ) ) {
                     sound = in;
 
                     goto L_SOUND_FOUND;
@@ -1995,7 +2117,7 @@ public:
 
 
             L_SOUND_FOUND: {
-                std :: invoke( method, &user, sound );
+                std::invoke( method, &user, sound );
 
                 Embed{
                     title:
@@ -2015,18 +2137,18 @@ public:
             };
 
 
-            auto payload = ins.for_each< std :: string >(
+            auto payload = ins.for_each< std::string >(
                 {
-                    [] ( const std :: string& in ) -> std :: string {
+                    [] ( const std::string& in ) -> std::string {
                         return in;
                     },
 
-                    [] ( std :: string& match, auto& payload ) -> bool {
-                        return !( match = User :: make_id( match ) ).empty();
+                    [] ( std::string& match, auto& payload ) -> bool {
+                        return !( match = User::make_id( match ) ).empty();
                     }
                 },
 
-                [ & ] ( std :: string& from_id, auto& payload ) -> void {
+                [ & ] ( std::string& from_id, auto& payload ) -> void {
                     constexpr int precision = 10000;
 
 
@@ -2035,7 +2157,7 @@ public:
 
                     User from{ from_id };
 
-                    double mul = std :: pow(
+                    double mul = std::pow(
                                      static_cast< double >( RANDOM ) / RANDOM_MAX,
                                      3
                                  ) * 0.5;
@@ -2113,7 +2235,7 @@ public:
 
 
             L_NO_USER: {
-                std :: cout
+                std::cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "Who are you stealing from?";
 
@@ -2121,7 +2243,7 @@ public:
             }
 
             L_NO_CREDITS: {
-                std :: cout
+                std::cout
                 << OUTBOUND_REPLY_MESSAGE
                 << "Lasa-i ma bani de o pita.";
 
@@ -2138,7 +2260,7 @@ public:
             RED = 1, BLACK = 2, GREEN = 4
         };
 
-        static constexpr std :: array< const char*, 3 > colors{ "red", "black", "green" };
+        static constexpr std::array< const char*, 3 > colors{ "red", "black", "green" };
 
     public:
         GUI_OP( main ) {
@@ -2148,10 +2270,10 @@ public:
             =
             ins.for_each< int, int64_t >(
                 {
-                    [] ( const std :: string& in ) -> int {
+                    [] ( const std::string& in ) -> int {
                         for( size_t idx = 0; idx <= 2; ++idx )
                             if( in == colors[ idx ] )
-                                return std :: pow( 2, idx );
+                                return std::pow( 2, idx );
 
                         return 0;
                     },
@@ -2162,8 +2284,8 @@ public:
                 },
 
                 {
-                    [] ( const std :: string& in ) -> int64_t {
-                        return std :: stoll( in );
+                    [] ( const std::string& in ) -> int64_t {
+                        return std::stoll( in );
                     },
 
                     [ & ] ( int64_t& match, auto& payload ) -> bool {
@@ -2174,7 +2296,7 @@ public:
                 [ & ] (
                     int& gambled_color,
                     int64_t& gambled_ammount,
-                    Inbounds :: FE_payload& payload
+                    Inbounds::FE_payload& payload
                 ) -> void {
                     const auto land   = _roulette_spin( guild, gambled_color );
                     int64_t    acc    = 0;
@@ -2225,7 +2347,7 @@ public:
 
             switch( payload.missing_at ) {
                 case 0: {
-                    std :: cout
+                    std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "What color are you gambling on?";
 
@@ -2233,7 +2355,7 @@ public:
                 }
 
                 case 1: {
-                    std :: cout
+                    std::cout
                     << OUTBOUND_REPLY_MESSAGE
                     << "Might wanna double-check how much are you gambling.";
 
@@ -2250,7 +2372,7 @@ public:
 
             if( _roulette_land_to_color( land ) == gambled_color )
                 if( RANDOM % precision < guild.rig() * precision )
-                    land = std :: clamp( land + 1, 0, 31 );
+                    land = std::clamp( land + 1, 0, 31 );
 
             return land;
         }
@@ -2273,12 +2395,12 @@ public:
     class Python {
     public:
         GUI_OP( main ) {
-            std :: string str{};
+            std::string str{};
 
             for( auto& in : ins )
                 str += in, str += ' ';
 
-            std :: cout
+            std::cout
             << OUTBOUND_PYTHON_RESPONSE
             << str;
         }
@@ -2288,7 +2410,7 @@ public:
 #pragma endregion Branches
 
 public:
-    inline static std :: vector< Keyword > keywords = {
+    inline static std::vector< Keyword > keywords = {
         { 1, { "credits", "money", "balance", "coins" } },
         { 2, { "hash" } },
         { 3, { "kiss" } },
@@ -2327,34 +2449,35 @@ public:
         { 8501243811175406933ULL,  pet },
         { 17600742676213031575ULL, boobas },
 
-        { 7492372067882396056ULL,  Voices :: connect },
-        { 3435728378537700265ULL,  Voices :: disconnect },
-        { 9340956479027659370ULL,  Voices :: play },
-        { 15925390277482132049ULL, Voices :: stop },
-        { 15169021593429937846ULL, Voices :: sounds_show },
+        { 7492372067882396056ULL,  Voices::connect },
+        { 3435728378537700265ULL,  Voices::disconnect },
+        { 9340956479027659370ULL,  Voices::play },
+        { 15925390277482132049ULL, Voices::stop },
+        { 15169021593429937846ULL, Voices::sounds_show },
 
-        { 6865420363795655716ULL, Settings :: voice_wait_set },
-        { 6685002744963886194ULL, Settings :: voice_wait_show },
+        { 6865420363795655716ULL, Settings::voice_wait_set },
+        { 6685002744963886194ULL, Settings::voice_wait_show },
 
-        { 1062816732498115940ULL,  Guilds :: prefix_set },
-        { 2016015562653219627ULL,  Guilds :: prefix_show },
-        { 14632587987046264091ULL, Guilds :: voice_auto_plays_add },
-        { 8901744138937185971ULL,  Guilds :: voice_auto_plays_clear },
-        { 11115212484132745176ULL, Guilds :: voice_auto_plays_show },
-        { 11779848440330006868ULL, Guilds :: gamble_rig_set },
-        { 5995434624829588022ULL,  Guilds :: gamble_rig_show },
-        { 9483180197231311695ULL,  Guilds :: steal_chance_set },
-        { 11508569767627199743ULL, Guilds :: steal_chance_show },
-        { 9960837043950823267ULL,  Guilds :: ticks_voice_set },
-        { 1450920041828067319ULL,  Guilds :: ticks_voice_show },
-        { 8604667370303577938ULL,  Guilds :: mul_show },
+        { 1062816732498115940ULL,  Guilds::prefix_set },
+        { 2016015562653219627ULL,  Guilds::prefix_show },
+        { 14632587987046264091ULL, Guilds::voice_auto_plays_add },
+        { 8901744138937185971ULL,  Guilds::voice_auto_plays_clear },
+        { 11115212484132745176ULL, Guilds::voice_auto_plays_show },
+        { 11779848440330006868ULL, Guilds::gamble_rig_set },
+        { 5995434624829588022ULL,  Guilds::gamble_rig_show },
+        { 9483180197231311695ULL,  Guilds::steal_chance_set },
+        { 11508569767627199743ULL, Guilds::steal_chance_show },
+        { 9960837043950823267ULL,  Guilds::ticks_voice_set },
+        { 1450920041828067319ULL,  Guilds::ticks_voice_show },
+        { 8604667370303577938ULL,  Guilds::mul_show },
 
-        { 4330606938181995941ULL,  Users :: credits_show },
-        { 12382791774924742628ULL, Users :: voice_hi_set },
-        { 183303123199750495ULL,   Users :: voice_bye_set },
-        { 3546343074134243021ULL,  Users :: credits_steal },
+        { 4330606938181995941ULL,  Users::credits_show },
+        { 12382791774924742628ULL, Users::voice_hi_set },
+        { 183303123199750495ULL,   Users::voice_bye_set },
+        { 3546343074134243021ULL,  Users::credits_steal },
 
-        { 15754336788579780731ULL, Gamble :: main }
+        { 15754336788579780731ULL, Gamble::main },
+        { 16987320819845335283ULL, Gamble::main }
     };
 
 };
@@ -2370,10 +2493,10 @@ public:
 
         user.credits_add( 20.0 * mul, guild );
 
-        guild.mul_to( std :: min( mul + 0.001, 10.0 ) );
+        guild.mul_to( std::min( mul + 0.001, 10.0 ) );
 
 
-        Instruc :: execute( guild, user, ins );
+        Instruc::execute( guild, user, ins );
     }
 };
 
@@ -2398,11 +2521,11 @@ public:
         ins.emplace_front( connected ? user.voice_hi() : user.voice_bye() );
 
         if( connected )
-            std :: this_thread :: sleep_for(
-                std :: chrono :: milliseconds( Setting :: voice_hi_wait() )
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds( Setting::voice_hi_wait() )
             );
 
-        Instruc :: Voices :: play( guild, {}, ins );
+        Instruc::Voices::play( guild, {}, ins );
     }
 
 };
@@ -2411,7 +2534,7 @@ public:
 class Tick {
 public:
     GUI_OP( on_tick ) {
-        switch( std :: hash< std :: string_view >{}( ins.at( 0 ) ) ) {
+        switch( std::hash< std::string_view >{}( ins.at( 0 ) ) ) {
             case 7492372067882396056ULL:  voice( guild, user, ins ); break;
 
             case 10702603417961775396ULL: init( guild, user, ins ); break;
@@ -2424,7 +2547,7 @@ public:
     }
 
     GUI_OP( voice ) {
-        Tick :: outbound( guild, guild.pull( Guild :: ticks_voice ), OUTBOUND_TICK_VOICE );
+        Tick::outbound( guild, guild.pull( Guild::ticks_voice ), OUTBOUND_TICK_VOICE );
 
 
         if( ins.voice_id().empty() ) return;
@@ -2448,12 +2571,12 @@ public:
 
         ins.push_front( itr -> first );
 
-        Instruc :: Voices :: play( guild, {}, ins );
+        Instruc::Voices::play( guild, {}, ins );
     }
 
 public:
-    static void outbound( Guild guild, size_t delay, std :: string_view type ) {
-        std :: cout
+    static void outbound( Guild guild, size_t delay, std::string_view type ) {
+        std::cout
             << OUTBOUND_TICK_GUILD_SET
             << guild.id()
             << OUTBOUND_LOW_SPLIT
@@ -2468,33 +2591,63 @@ public:
 
 
 
-std :: map<
-    std :: string_view,
-    std :: function< void( Guild, User, Ref< Inbounds > ) >
+std::map<
+    std::string_view,
+    std::function< void( Guild, User, Ref< Inbounds > ) >
 >  event_map = {
-    { INBOUND_MESSAGE,      Message :: on_create },
-    { INBOUND_VOICE_UPDATE, Voice :: on_update },
-    { INBOUND_TICK,         Tick :: on_tick }
+    { INBOUND_MESSAGE,      Message::on_create },
+    { INBOUND_VOICE_UPDATE, Voice::on_update },
+    { INBOUND_TICK,         Tick::on_tick }
 };
 
 
 
 int main( int arg_count, char* args[] ) {
+    auto dbg_begin_time = std::chrono::high_resolution_clock::now();
+
     srand(
         static_cast< unsigned int >(
-            std :: chrono :: duration_cast< std :: chrono :: milliseconds >(
-                std :: chrono :: high_resolution_clock :: now().time_since_epoch()
+            std::chrono::duration_cast< std::chrono::milliseconds >(
+                std::chrono::high_resolution_clock::now().time_since_epoch()
             ).count()
         )
      );
 
 
     Inbounds ins  { arg_count, args };
+
+    if( ins( "-debug" ) ) {
+        DebugLayer::uplink();
+
+        DebugLayer::push( "Core inbounds", "Ahri voice ID: "s + ins.voice_id() );
+        DebugLayer::push( "Core inbounds", "Guild ID: "s + ins.guild_id() );
+        DebugLayer::push( "Core inbounds", "User ID: "s + ins.user_id() );
+        DebugLayer::push( "Core inbounds", "User voice ID: "s + ins.user_voice_id() );
+    }
+
     Guild    guild{ ins.guild_id() };
     User     user { ins.user_id() };
 
 
-    event_map.at( ins.event() )( guild, user, ins );
+    try {
+        event_map.at( ins.event() )( guild, user, ins );
+    } catch( std::runtime_error& err ) {
+        DebugLayer::push( DebugLayer::ERRORS, "<main>: "s + err.what() );
+    } catch( ... ) {
+        DebugLayer::push( DebugLayer::ERRORS, "<main>: Unknown RTE." );
+    }
+
+
+    double dbg_elapsed = std::chrono::duration_cast< std::chrono::microseconds >(
+        std::chrono::high_resolution_clock::now() - dbg_begin_time
+    ).count();
+
+
+    DebugLayer::push( "Chronos", Stream{} << "Core executed in: **" << dbg_elapsed << "**us." );
+
+    if( DebugLayer::has_errors() ) DebugLayer::uplink();
+
+    DebugLayer::release();
 
 
     return 0;
