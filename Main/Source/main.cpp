@@ -1176,39 +1176,32 @@ public:
 */
 
 
-    static Function extract_instruction_sense_2(
+    static std::pair< Function, double > extract_instruction_sense_2(
         Ref< Inbounds > ins
     ) {
-        // to be checked: auto deq = static_cast< Inbounds::Base >( ins );
+        std::vector< std::tuple< Keyword*, double, std::string* > > kws{};
 
-        Inbounds::Base deq{ ins.begin(), ins.end() };
+        for( auto& in : ins ) {
+            auto [ kw, match ] = calibrate_for_keyword_2( in );
+            
+            if( !kw ) continue;
 
-        calibrate_ins_2( deq );
-
-        std::vector< std::pair< Keyword*, std::string& > > kws{};
-
-        for( auto entry = deq.begin(); entry != deq.end(); ++entry ) {
-            auto itr = std::find_if( keywords.begin(), keywords.end(), [ & ] ( auto& kw ) -> bool {
-                for( auto& alias : std ::get< 1 >( kw ) )
-                    if( *entry == alias )
-                        return true;
-
-                return false;
-            } );
-
-            if( itr == keywords.end() ) continue;
-
-            kws.emplace_back( &*itr, *( deq.begin() + std::distance( deq.begin(), entry ) ) );
+            kws.emplace_back( kw, match, &in );
         }
 
         std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
-            return ( std::get< 0 >( *kw_1.first ) > std::get< 0 >( *kw_2.first ) );
+            return std::get< 0 >( *std::get< 0 >( kw_1 ) ) 
+                   > 
+                   std::get< 0 >( *std::get< 0 >( kw_2 ) );
         } );
 
 
         DebugLayer::if_uplinked( [ & ] {
              for( auto& kw : kws )
-                DebugLayer::push( "<extract_instruction_sense_2>: matched keywords", std::get< 1 >( *kw.first )[ 0 ] );
+                DebugLayer::push( 
+                    "<extract_instruction_sense_2>: Extracted keywords:", 
+                    std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ] 
+                );
         } );
 
 
@@ -1219,74 +1212,62 @@ public:
 
             for( int64_t offs = kws.size() - 1; offs >= 0; --offs )
                 if( ( combs >> offs ) & 1 )
-                    chain += std::get< 1 >( *kws[ offs ].first ).front();
+                    chain += std::get< 1 >( *std::get< 0 >( kws[ offs ] ) )[ 0 ];
 
             auto sense = std::hash< std::string_view >{}( chain );
 
             try {
                 Function op = map.at( sense );
 
-                DebugLayer::if_uplinked( [ & ] {
-                    DebugLayer::push( "<extract_instruction_sense_2>: extracted", chain );
-                } );
+
+                double  accumulated_match = 0.0;
+                int64_t activation_count  = 0;
 
                 std::remove_if( ins.begin(), ins.end(), [ & ] ( auto& in ) -> bool {
                     auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {
-                        return in == kw.second;
+                        return &in == std::get< std::string* >( kw );
                     } );
 
                     if( itr == kws.end() ) return false;
 
-                    if( ( combs >> ( std::distance( kws.begin(), itr ) ) ) & 1 ) return true;
+                    if( !( ( combs >> std::distance( kws.begin(), itr ) ) & 1 ) ) return false;
 
-                    return false;
-                } );
-
-                /*
-                std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
-                    bool swap = kw_1.second < kw_2.second;
-
-                    if( !swap ) return false;
-
-                    auto offs_1 = &kw_1 - kws.data();
-                    auto offs_2 = &kw_2 - kws.data();
-
-                    bool bit_1 = ( combs >> offs_1 ) & 1;
-                    bool bit_2 = ( combs >> offs_2 ) & 1;
-
-                    bit_1 ? ( combs |= ( 1 << offs_2 ) ) : ( combs &= ~( 1 << offs_2 ) );
-                    bit_2 ? ( combs |= ( 1 << offs_1 ) ) : ( combs &= ~( 1 << offs_1 ) );
+                    accumulated_match += std::get< double >( *itr );
+                    ++activation_count;
 
                     return true;
                 } );
 
-                for( auto itr = kws.rbegin(); itr != kws.rend(); ++itr ) {
-                    if( !( ( combs >> std::distance( itr, kws.rend() - 1 ) ) & 1 ) ) continue;
 
-                    auto tbr = ins.begin();
+                double confidence = accumulated_match / activation_count;
 
-                    std::advance( tbr, itr->second );
-
-                    ins.erase( tbr );
-                }
-                */
+                DebugLayer::if_uplinked( [ & ] {
+                    DebugLayer::push( 
+                        "<extract_instruction_sense_2>: Extracted chain:", 
+                        Stream{} << chain << " with **" << confidence << "** confidence."
+                    );
+                } );
 
                 DebugLayer::if_uplinked( [ & ] {
                     for( auto& in : ins )
-                        DebugLayer::push( "<extract_instruction_sense_2>: remaining words", in );
+                        DebugLayer::push( "<extract_instruction_sense_2>: Other words:", in );
                 } );
                 
 
-                return op;
+                return { op, confidence };
             } catch( ... ) {
                 continue;
             }
         }
 
-        return nullptr;
+        DebugLayer::if_uplinked( [ & ] {
+            DebugLayer::push( "<extract_instruction_sense_2>: Info:", "Sense confidence too low to consider." );
+        } );
+
+        return { nullptr, 0.0 };
     }
 
-    static Function extract_sound_sense_2(
+    static std::pair< Function, double > extract_sound_sense_2(
         Ref< Inbounds > ins
     ) {
         std::string sound{};
@@ -1302,9 +1283,8 @@ public:
         for( auto& file : std::filesystem::directory_iterator{ SOUNDS_PATH_MASTER } ) {
             std::string entry{ file.path().string().substr( 13 ) };
 
-
             if( sound == entry ) {
-                best_match.second = sound;
+                best_match = { 1.0, sound };
 
                 break;
             }
@@ -1314,60 +1294,83 @@ public:
         }
 
 
-        if( best_match.second.empty() ) return nullptr;
+        if( best_match.second.empty() ) { 
+            DebugLayer::if_uplinked( [ & ] {
+                DebugLayer::push( "<extract_sound_sense_2>: Info:", "Sense confidence too low to consider." );
+            } );
+
+            return { nullptr, 0.0 };
+        }
 
 
         best_match.second.resize( best_match.second.size() - 4 );
 
         ins.push_front( best_match.second );
 
-        return map.at( 9340956479027659370ULL );
+        DebugLayer::if_uplinked( [ & ] {
+            DebugLayer::push( 
+                "<extract_sound_sense_2>: Extracted sound:", 
+                Stream{} << ins.front() << " with **" << best_match.first << "** confidence."
+            );
+        } );
+
+        return { map.at( 9340956479027659370ULL ), best_match.first };
     }
 
     static Function make_sense_of_2(
         Ref< Inbounds > ins
     ) {
-        static Function ( *extract_order[] )( Ref< Inbounds > ) = {
+        static std::pair< Function, double > ( *extractors[] )( Ref< Inbounds > ) = {
             extract_instruction_sense_2,
             extract_sound_sense_2
         };
 
+        using ExtractorRet = decltype( extractors[ 0 ]( ins ) );
 
-        for( auto extract_op : extract_order ) {
-            Function extracted = std::invoke( extract_op, ins );
+        static auto set_compare = [] ( const ExtractorRet& ex_1, const ExtractorRet& ex_2 ) -> bool {
+            return ex_1.second > ex_2.second;
+        };
 
-            if( extracted ) return extracted;
-        }
+        std::set< ExtractorRet, decltype( set_compare ) > set;
 
+
+        for( auto& extractor : extractors )
+            set.insert( std::invoke( extractor, ins ) );
+
+        
+        if( set.begin()->second >= 0.5 )
+            return set.begin()->first;
+        
+        
+        DebugLayer::if_uplinked( [ & ] {
+            DebugLayer::push( "<make_sense_of_2>: Info:", "Sense confidence too low to consider." );
+        } );
 
         throw std::out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
 
         return nullptr;
     }
 
-    static void calibrate_ins_2( auto& container ) {
-        for( auto& entry : container ) {
-            std::pair< double, Keyword* > best_match{ 0.5, nullptr };
+    static std::pair< Keyword*, double > calibrate_for_keyword_2( std::string_view str ) {
+        std::pair< Keyword*, double > best_match{ nullptr, 0.5 };
 
-            for( auto& kw : keywords )
-                for( auto& alias : std::get< 1 >( kw ) )
-                    if( entry == alias )
-                        goto L_PERFECT_MATCH;
-                    else if( double match = close_match( entry, alias ); match > best_match.first )
-                        best_match = { match, &kw };
+        for( auto& kw : keywords )
+            for( auto& synonym : std::get< 1 >( kw ) )
+                if( str == synonym )
+                    return { &kw, 1.0 };
+                else if( double match = close_match( str, synonym ); match > best_match.second )
+                    best_match = { &kw, match };
 
-            if( best_match.second ) {
-                auto match = std::get< 1 >( *best_match.second )[ 0 ];
-
-                if( DebugLayer::has_uplink() ) {
-                    DebugLayer::push( "<calibrate_ins_2>: replaces", Stream{} << entry << " -> " << match << " @**" << best_match.first << "**" );
-                }
-
-                entry = match;
-            }
-
-            L_PERFECT_MATCH: continue;
+        if( best_match.first ) {
+            DebugLayer::if_uplinked( [ & ] {
+                DebugLayer::push( 
+                    "<calibrate_for_keyword_2>: Info:", 
+                    Stream{} << str << " -> " << std::get< 1 >( *best_match.first )[ 0 ] << " @**" << best_match.second << "**" 
+                );
+            } );
         }
+
+        return best_match;
     }
 
 public:
@@ -2417,7 +2420,7 @@ public:
         { 4, { "pet" } },
         { 5, { "voice", "connect", "join" } },
         { 6, { "leave", "disconnect", "quit" } },
-        { 7, { "play" } },
+        { 7, { "play", "p" } },
         { 8, { "set", "change", "=", "make" } },
         { 9, { "prefix" } },
         { 10, { "hi", "hello", "greet", "intro" } },
