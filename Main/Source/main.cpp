@@ -1179,14 +1179,14 @@ public:
     static std::pair< Function, double > extract_instruction_sense_2(
         Ref< Inbounds > ins
     ) {
-        std::vector< std::tuple< Keyword*, double, std::string* > > kws{};
+        std::vector< std::tuple< Keyword*, double, std::string > > kws{};
 
         for( auto& in : ins ) {
             auto [ kw, match ] = calibrate_for_keyword_2( in );
             
             if( !kw ) continue;
 
-            kws.emplace_back( kw, match, &in );
+            kws.emplace_back( kw, match, in );
         }
 
         std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
@@ -1222,21 +1222,23 @@ public:
 
                 double  accumulated_match = 0.0;
                 int64_t activation_count  = 0;
-
-                std::remove_if( ins.begin(), ins.end(), [ & ] ( auto& in ) -> bool {
-                    auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {
-                        return &in == std::get< std::string* >( kw );
+                
+                for( auto in = ins.begin(); in != ins.end(); ) {
+                    auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {            
+                        return *in == std::get< std::string >( kw ); 
                     } );
 
-                    if( itr == kws.end() ) return false;
+                    if( itr == kws.end() ) goto L_KEEP;
 
-                    if( !( ( combs >> std::distance( kws.begin(), itr ) ) & 1 ) ) return false;
+                    if( !( ( combs >> std::distance( kws.begin(), itr ) ) & 1 ) ) goto L_KEEP;
 
                     accumulated_match += std::get< double >( *itr );
                     ++activation_count;
 
-                    return true;
-                } );
+                    in = ins.erase( in ); continue;
+
+                    L_KEEP: ++in; continue;
+                };
 
 
                 double confidence = accumulated_match / activation_count;
@@ -1246,14 +1248,11 @@ public:
                         "<extract_instruction_sense_2>: Extracted chain:", 
                         Stream{} << chain << " with **" << confidence << "** confidence."
                     );
-                } );
 
-                DebugLayer::if_uplinked( [ & ] {
                     for( auto& in : ins )
                         DebugLayer::push( "<extract_instruction_sense_2>: Other words:", in );
                 } );
-                
-
+        
                 return { op, confidence };
             } catch( ... ) {
                 continue;
@@ -1275,13 +1274,14 @@ public:
         for( auto& in : ins )
             ( sound += in ) += '_';
 
-        sound.pop_back(); sound += ".mp3";
+        if( !sound.empty() ) sound.pop_back();
 
 
         std::pair< double, std::string > best_match{ 0.5, "" };
 
         for( auto& file : std::filesystem::directory_iterator{ SOUNDS_PATH_MASTER } ) {
             std::string entry{ file.path().string().substr( 13 ) };
+            entry.resize( entry.size() - 4 );
 
             if( sound == entry ) {
                 best_match = { 1.0, sound };
@@ -1303,8 +1303,6 @@ public:
         }
 
 
-        best_match.second.resize( best_match.second.size() - 4 );
-
         ins.push_front( best_match.second );
 
         DebugLayer::if_uplinked( [ & ] {
@@ -1321,8 +1319,8 @@ public:
         Ref< Inbounds > ins
     ) {
         static std::pair< Function, double > ( *extractors[] )( Ref< Inbounds > ) = {
-            extract_instruction_sense_2,
-            extract_sound_sense_2
+            extract_instruction_sense_2,extract_sound_sense_2
+            
         };
 
         using ExtractorRet = decltype( extractors[ 0 ]( ins ) );
@@ -2634,6 +2632,8 @@ int main( int arg_count, char* args[] ) {
 
     try {
         event_map.at( ins.event() )( guild, user, ins );
+    } catch( std::out_of_range& err ) {
+        DebugLayer::push( DebugLayer::ERRORS, "<main>: "s + err.what() );
     } catch( std::runtime_error& err ) {
         DebugLayer::push( DebugLayer::ERRORS, "<main>: "s + err.what() );
     } catch( ... ) {
