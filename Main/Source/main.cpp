@@ -137,10 +137,10 @@ using namespace std::string_literals;
 
 class Inbounds : public std::deque< std::string > {
 public:
-    using Base = std::deque< std::string >;
+    using Container = std::deque< std::string >;
 
 public:
-    using Base::Base;
+    using Container::Container;
 
 public:
     static constexpr int   mandatory_ins_count   = 5;
@@ -188,6 +188,15 @@ public:
 
     auto& user_voice_id() const {
         return _out_refs[ _USER_VOICE_ID ];
+    }
+
+public:
+    bool vc_connected() const {
+        return !this->voice_id().empty();
+    }
+
+    bool user_vc_connected() const {
+        return !this->user_voice_id().empty();
     }
 
 public:
@@ -336,7 +345,7 @@ private:
 
 class DebugLayer {
 public:
-    inline static const char*   ERRORS   = "Errors";
+    inline static const char*   CRITICAL   = "Criticals";
 
 private:
     inline static std::map< std::string, std::string >   _layers{};
@@ -369,8 +378,8 @@ public:
     }
 
 public:
-    static bool has_errors() {
-        return _layers.contains( ERRORS );
+    static bool is_critical() {
+        return _layers.contains( CRITICAL );
     }
 
 public:
@@ -1049,10 +1058,10 @@ public:
             what( guild, user, ins );
 
         } catch( std::runtime_error& err ) {
-            DebugLayer::push( DebugLayer::ERRORS, "<execute>: "s + err.what() );
+            DebugLayer::push( DebugLayer::CRITICAL, "<execute>: "s + err.what() );
 
         } catch( ... ) {
-            DebugLayer::push( DebugLayer::ERRORS, "<execute>: Unknown RTE." );
+            DebugLayer::push( DebugLayer::CRITICAL, "<execute>: Unknown RTE." );
         }
     }
 
@@ -1176,31 +1185,61 @@ public:
 */
 
 
-    static std::pair< Function, double > extract_instruction_sense_2(
+    struct ExtractorRet {
+        ExtractorRet() = default;
+        ExtractorRet( const ExtractorRet& ) = default;
+        ExtractorRet( ExtractorRet&& ) = default;
+
+        ExtractorRet(
+            Function                     func,
+            double                       conf,
+            const Inbounds::Container&   cnt
+        )
+        : function{ func }, confidence{ conf }, container{ cnt }
+        {}
+
+        ExtractorRet(
+            Function                func,
+            double                  conf,
+            Inbounds::Container&&   cnt
+        )
+        : function{ func }, confidence{ conf }, container{ std::move( cnt ) }
+        {}
+
+        Function              function     = {};
+        double                confidence   = {};
+        Inbounds::Container   container    = {};
+    };
+
+
+    static ExtractorRet extract_instruction_sense_2(
         Ref< Inbounds > ins
     ) {
-        std::vector< std::tuple< Keyword*, double, std::string > > kws{};
+        Inbounds::Container cnt{ ins.begin(), ins.end() };
 
-        for( auto& in : ins ) {
+        std::vector< std::tuple< Keyword*, double, std::string > > kws{};
+        
+
+        for( auto& in : cnt ) {
             auto [ kw, match ] = calibrate_for_keyword_2( in );
-            
+
             if( !kw ) continue;
 
             kws.emplace_back( kw, match, in );
         }
 
         std::sort( kws.begin(), kws.end(), [ & ] ( const auto& kw_1, const auto& kw_2 ) -> bool {
-            return std::get< 0 >( *std::get< 0 >( kw_1 ) ) 
-                   > 
+            return std::get< 0 >( *std::get< 0 >( kw_1 ) )
+                   >
                    std::get< 0 >( *std::get< 0 >( kw_2 ) );
         } );
 
 
         DebugLayer::if_uplinked( [ & ] {
              for( auto& kw : kws )
-                DebugLayer::push( 
-                    "<extract_instruction_sense_2>: Extracted keywords:", 
-                    std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ] 
+                DebugLayer::push(
+                    "<extract_instruction_sense_2>: Extracted keywords:",
+                    std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ]
                 );
         } );
 
@@ -1222,10 +1261,10 @@ public:
 
                 double  accumulated_match = 0.0;
                 int64_t activation_count  = 0;
-                
-                for( auto in = ins.begin(); in != ins.end(); ) {
-                    auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {            
-                        return *in == std::get< std::string >( kw ); 
+
+                for( auto in = cnt.begin(); in != cnt.end(); ) {
+                    auto itr = std::find_if( kws.begin(), kws.end(), [ & ] ( const auto& kw ) -> bool {
+                        return *in == std::get< std::string >( kw );
                     } );
 
                     if( itr == kws.end() ) goto L_KEEP;
@@ -1235,7 +1274,7 @@ public:
                     accumulated_match += std::get< double >( *itr );
                     ++activation_count;
 
-                    in = ins.erase( in ); continue;
+                    in = cnt.erase( in ); continue;
 
                     L_KEEP: ++in; continue;
                 };
@@ -1244,16 +1283,16 @@ public:
                 double confidence = accumulated_match / activation_count;
 
                 DebugLayer::if_uplinked( [ & ] {
-                    DebugLayer::push( 
-                        "<extract_instruction_sense_2>: Extracted chain:", 
+                    DebugLayer::push(
+                        "<extract_instruction_sense_2>: Extracted chain:",
                         Stream{} << chain << " with **" << confidence << "** confidence."
                     );
 
                     for( auto& in : ins )
                         DebugLayer::push( "<extract_instruction_sense_2>: Other words:", in );
                 } );
-        
-                return { op, confidence };
+
+                return { op, confidence, std::move( cnt ) }; /* move? */
             } catch( ... ) {
                 continue;
             }
@@ -1263,10 +1302,10 @@ public:
             DebugLayer::push( "<extract_instruction_sense_2>: Info:", "Sense confidence too low to consider." );
         } );
 
-        return { nullptr, 0.0 };
+        return { nullptr, 0.0, {} };
     }
 
-    static std::pair< Function, double > extract_sound_sense_2(
+    static ExtractorRet extract_sound_sense_2(
         Ref< Inbounds > ins
     ) {
         std::string sound{};
@@ -1274,7 +1313,16 @@ public:
         for( auto& in : ins )
             ( sound += in ) += '_';
 
-        if( !sound.empty() ) sound.pop_back();
+        if( !sound.empty() ) 
+            sound.pop_back();
+        else {
+            DebugLayer::push( 
+                DebugLayer::CRITICAL, 
+                "<extract_sound_sense_2>: Attempt to extract sound sense from an empty inbounds' deque." 
+            );
+
+            return { nullptr, 0.0, {} };
+        }
 
 
         std::pair< double, std::string > best_match{ 0.5, "" };
@@ -1294,39 +1342,35 @@ public:
         }
 
 
-        if( best_match.second.empty() ) { 
+        if( best_match.second.empty() ) {
             DebugLayer::if_uplinked( [ & ] {
-                DebugLayer::push( "<extract_sound_sense_2>: Info:", "Sense confidence too low to consider." );
+                DebugLayer::push( "<extract_sound_sense_2>:", "Sense too low to consider." );
             } );
 
-            return { nullptr, 0.0 };
+            return { nullptr, 0.0, {} };
         }
 
 
-        ins.push_front( best_match.second );
-
         DebugLayer::if_uplinked( [ & ] {
-            DebugLayer::push( 
-                "<extract_sound_sense_2>: Extracted sound:", 
-                Stream{} << ins.front() << " with **" << best_match.first << "** confidence."
+            DebugLayer::push(
+                "<extract_sound_sense_2>: Extracted sound:",
+                Stream{} << best_match.second << " with **" << best_match.first << "** confidence."
             );
         } );
 
-        return { map.at( 9340956479027659370ULL ), best_match.first };
+        return { map.at( 9340956479027659370ULL ), best_match.first, { 1, best_match.second } };
     }
 
     static Function make_sense_of_2(
         Ref< Inbounds > ins
     ) {
-        static std::pair< Function, double > ( *extractors[] )( Ref< Inbounds > ) = {
-            extract_instruction_sense_2,extract_sound_sense_2
-            
+        static ExtractorRet ( *extractors[] )( Ref< Inbounds > ) = {
+            extract_instruction_sense_2,
+            extract_sound_sense_2
         };
 
-        using ExtractorRet = decltype( extractors[ 0 ]( ins ) );
-
         static auto set_compare = [] ( const ExtractorRet& ex_1, const ExtractorRet& ex_2 ) -> bool {
-            return ex_1.second > ex_2.second;
+            return ex_1.confidence > ex_2.confidence;
         };
 
         std::set< ExtractorRet, decltype( set_compare ) > set;
@@ -1336,17 +1380,24 @@ public:
             set.insert( std::invoke( extractor, ins ) );
 
         
-        if( set.begin()->second >= 0.5 )
-            return set.begin()->first;
-        
-        
-        DebugLayer::if_uplinked( [ & ] {
-            DebugLayer::push( "<make_sense_of_2>: Info:", "Sense confidence too low to consider." );
-        } );
+        if( set.empty() ) 
+            throw std::runtime_error{ "<make_sense_of_2>: Empty extractor set." };
 
-        throw std::out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
 
-        return nullptr;
+        auto& ext = *set.begin();
+
+        if( ext.confidence < 0.5 ) {
+            DebugLayer::if_uplinked( [ & ] {
+                DebugLayer::push( "<make_sense_of_2>:", "All senses too low to consider." );
+            } );
+
+            throw std::out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
+        }
+
+        if( !ext.container.empty() )
+            ins.assign( ext.container.begin(), ext.container.end() );
+
+        return ext.function;
     }
 
     static std::pair< Keyword*, double > calibrate_for_keyword_2( std::string_view str ) {
@@ -1361,9 +1412,9 @@ public:
 
         if( best_match.first ) {
             DebugLayer::if_uplinked( [ & ] {
-                DebugLayer::push( 
-                    "<calibrate_for_keyword_2>: Info:", 
-                    Stream{} << str << " -> " << std::get< 1 >( *best_match.first )[ 0 ] << " @**" << best_match.second << "**" 
+                DebugLayer::push(
+                    "<calibrate_for_keyword_2>: Info:",
+                    Stream{} << str << " -> " << std::get< 1 >( *best_match.first )[ 0 ] << " @**" << best_match.second << "**"
                 );
             } );
         }
@@ -1466,11 +1517,17 @@ public:
         }
 
         GUI_OP( play ) {
-            std::cout
-            << OUTBOUND_VOICE_PLAY
-            << guild.id()
-            << OUTBOUND_LOW_SPLIT
-            << Sound::path_of( ins.at( 0 ) );
+            if( ins.user_vc_connected() && ( ins.voice_id() == ins.user_voice_id() ) ) {
+                std::cout
+                << OUTBOUND_VOICE_PLAY
+                << guild.id()
+                << OUTBOUND_LOW_SPLIT
+                << Sound::path_of( ins.at( 0 ) );
+            } else {
+                std::cout
+                << OUTBOUND_REPLY_MESSAGE
+                << "Where";
+            }
         }
 
         GUI_OP( stop ) {
@@ -2615,7 +2672,7 @@ int main( int arg_count, char* args[] ) {
      );
 
 
-    Inbounds ins  { arg_count, args };
+    Inbounds ins{ arg_count, args };
 
     if( ins( "-debug" ) ) {
         DebugLayer::uplink();
@@ -2626,18 +2683,18 @@ int main( int arg_count, char* args[] ) {
         DebugLayer::push( "Core inbounds", "User voice ID: "s + ins.user_voice_id() );
     }
 
-    Guild    guild{ ins.guild_id() };
-    User     user { ins.user_id() };
+    Guild guild{ ins.guild_id() };
+    User  user { ins.user_id() };
 
 
     try {
         event_map.at( ins.event() )( guild, user, ins );
     } catch( std::out_of_range& err ) {
-        DebugLayer::push( DebugLayer::ERRORS, "<main>: "s + err.what() );
+        DebugLayer::push( DebugLayer::CRITICAL, "<main>: "s + err.what() );
     } catch( std::runtime_error& err ) {
-        DebugLayer::push( DebugLayer::ERRORS, "<main>: "s + err.what() );
+        DebugLayer::push( DebugLayer::CRITICAL, "<main>: "s + err.what() );
     } catch( ... ) {
-        DebugLayer::push( DebugLayer::ERRORS, "<main>: Unknown RTE." );
+        DebugLayer::push( DebugLayer::CRITICAL, "<main>: Unknown RTE." );
     }
 
 
@@ -2648,7 +2705,7 @@ int main( int arg_count, char* args[] ) {
 
     DebugLayer::push( "Chronos", Stream{} << "Core executed in: **" << dbg_elapsed << "**us." );
 
-    if( DebugLayer::has_errors() ) DebugLayer::uplink();
+    if( DebugLayer::is_critical() ) DebugLayer::uplink();
 
     DebugLayer::release();
 

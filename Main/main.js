@@ -177,19 +177,43 @@ class Engine {
 
 
         this.client.on( Events.ClientReady, async ( client ) => {
-            this.on_ready();
+            try {
+                this.on_ready();
+            } catch( error ) {
+                console.log( error );
+            }
         } );
 
         this.client.on( Events.MessageCreate, async ( msg ) => {
             if( msg.author.bot ) return;
 
-            this.on_message( msg );
+            try {
+                this.on_message( msg );
+            } catch( error ) {
+                console.log( "[ CRITICAL FAULT ]\n" );
+                console.log( "---------------------------------\n" );
+                console.log( msg );
+                console.log( "---------------------------------\n" );
+                console.log( error );
+                console.log( "---------------------------------\n\n" );
+            }
         } );
 
         this.client.on( Events.VoiceStateUpdate, async ( old_state, new_state ) => {
             if( new_state.member.user.bot ) return;
 
-            this.on_voice_state( old_state, new_state );
+            try {
+                this.on_voice_state( old_state, new_state );
+            } catch( error ) {
+                console.log( "[ CRITICAL FAULT ]\n");
+                console.log( "---------------------------------\n" );
+                console.log( old_state );
+                console.log( "---------------------------------\n" );
+                console.log( new_state );
+                console.log( "---------------------------------\n" );
+                console.log( error );
+                console.log( "---------------------------------\n\n" );
+            }
         } );   
 
 
