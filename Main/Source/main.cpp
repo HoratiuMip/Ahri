@@ -1,3 +1,18 @@
+/*
+    Ahri(ookie) - Processing Engine Section ( C++ )
+
+    Hackerman: Mipsan
+
+
+
+    Vectorul de treburi care trebuie facute:
+    -_PROTO_DebugLayer stray strings??? - log was std::string_view, std::string fixed credits path overlapped on embed title overlapped on log? 
+    -kiss command check
+    -DebugLayer layer cascade
+*/
+
+
+
 #pragma region INCLUDES
 
 #include <iostream>
@@ -12,6 +27,8 @@
 #include <sstream>
 
 #include <functional>
+#include <variant>
+#include <optional>
 
 #include <map>
 #include <list>
@@ -21,8 +38,6 @@
 #include <bitset>
 
 #include <ranges>
-
-#include <optional>
 
 #include <random>
 
@@ -126,293 +141,21 @@
 
 
 std::random_device random;
+#define RANDOM_SEEDING_OP() \
+    srand( \
+        static_cast< unsigned int >( \
+            std::chrono::duration_cast< std::chrono::milliseconds >( \
+                std::chrono::high_resolution_clock::now().time_since_epoch() \
+            ).count() \
+        ) \
+     );
 #define RANDOM random()
 #define RANDOM_MAX std::random_device::max()
 
 
 
 using namespace std::string_literals;
-
-
-
-class Inbounds : public std::deque< std::string > {
-public:
-    using Container = std::deque< std::string >;
-
-public:
-    using Container::Container;
-
-public:
-    static constexpr int   mandatory_ins_count   = 5;
-
-public:
-    Inbounds() = default;
-
-    Inbounds( int arg_count, char** args ) {
-        for( int idx = 0; idx < mandatory_ins_count; ++idx ) {
-            _out_refs[ idx ] = args[ idx + 1 ];
-        }
-
-        for( int idx = mandatory_ins_count + 1; idx < arg_count; ++idx ) {
-            if( args[ idx ][ 0 ] == '-' )
-                _flags.insert( args[ idx ] );
-            else
-                this->emplace_back( args[ idx ] );
-        }
-    }
-
-private:
-    enum _OUT_REFS_ACCESS_IDX {
-        _EVENT, _GUILD_ID, _VOICE_ID, _USER_ID, _USER_VOICE_ID
-    };
-
-    std::string                    _out_refs[ mandatory_ins_count ]   = {};
-    std::set< std::string_view >   _flags                             = {};
-
-public:
-    auto& event() const {
-        return _out_refs[ _EVENT ];
-    }
-
-    auto& guild_id() const {
-        return _out_refs[ _GUILD_ID ];
-    }
-
-    auto& voice_id() const {
-        return _out_refs[ _VOICE_ID ];
-    }
-
-    auto& user_id() const {
-        return _out_refs[ _USER_ID ];
-    }
-
-    auto& user_voice_id() const {
-        return _out_refs[ _USER_VOICE_ID ];
-    }
-
-public:
-    bool vc_connected() const {
-        return !this->voice_id().empty();
-    }
-
-    bool user_vc_connected() const {
-        return !this->user_voice_id().empty();
-    }
-
-public:
-    bool operator () ( std::string_view flag ) const {
-        return _flags.find( flag ) != _flags.end();
-    }
-
-public:
-    template< typename T >
-    requires( std::is_arithmetic_v< T > )
-    auto max() {
-        if constexpr( std::is_same_v< int64_t, T > )
-            return _max< T >( std::stoll );
-        else if constexpr( std::is_same_v< double, T > )
-            return _max< T, size_t* >( std::stod, nullptr );
-    }
-
-private:
-    template< typename T, typename ...Xtra_args >
-    requires( std::is_arithmetic_v< T > )
-    std::optional< T > _max( T ( *func )( const std::string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
-        std::optional< T > max{};
-
-        for( auto& in : *this ) {
-            try {
-                if(
-                    T value = std::invoke( func, in, xtra_args... );
-                    value > max.value_or( std::numeric_limits< T >::min() )
-                )
-                    max = value;
-
-            } catch( ... ) {
-                continue;
-            }
-        }
-
-        return max;
-    }
-
-public:
-    auto first_str( const std::vector< std::string_view >& strs ) {
-        std::string_view first = {};
-
-        for( auto& in : *this ) {
-            if(
-                auto itr = std::find( strs.begin(), strs.end(), in );
-                itr != strs.end()
-            ) {
-                first = *itr;
-
-                break;
-            }
-        }
-
-        return first;
-    }
-
-public:
-    class FE_payload : public std::bitset< 32 > {
-    public:
-        int    done_count   = 0;
-        int    missing_at   = 0;
-        bool   abort        = false;
-    };
-
-public:
-    template< typename ...Args >
-    FE_payload for_each(
-        std::pair<
-            std::function< Args( const std::string& ) >,
-            std::function< bool( Args&, FE_payload& ) >
-        >... builds,
-
-        std::function< void( Args&..., FE_payload& ) > op
-    ) {
-        return _for_each< Args... >( builds..., op, std::optional< Args >{}... );
-    }
-
-private:
-    template< typename ...Args >
-    FE_payload _for_each(
-        std::pair<
-            std::function< Args( const std::string& ) >,
-            std::function< bool( Args&, FE_payload& ) >
-        >... builds,
-
-        std::function< void( Args&..., FE_payload& ) > op,
-
-        std::optional< Args >... args
-    ) {
-        FE_payload payload{};
-
-        while( true ) {
-            if( payload.abort )
-                break;
-
-            ( ( args = this->_extract_match( builds, payload ) ), ... );
-
-            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) )
-                break;
-
-            std::invoke( op, args.value()..., payload );
-
-            payload.done_count++;
-            payload.missing_at = 0;
-        }
-
-        payload.missing_at -= 1;
-
-        return payload;
-    }
-
-    template< typename T >
-    std::optional< T > _extract_match(
-        std::pair<
-            std::function< T( const std::string& ) >,
-            std::function< bool( T&, FE_payload& ) >
-        > build,
-
-        FE_payload& payload
-    ) {
-        auto itr = this->begin();
-
-        for( ; itr != this->end(); ++itr ) {
-            try {
-                T entry = build.first( *itr );
-
-                if( !build.second( entry, payload ) )
-                    continue;
-
-                this->erase( itr );
-
-                return std::move( entry );
-
-            } catch( ... ) {
-                continue;
-            }
-        }
-
-        return {};
-    }
-
-};
-
-
-
-class DebugLayer {
-public:
-    inline static const char*   CRITICAL   = "Criticals";
-
-private:
-    inline static std::map< std::string, std::string >   _layers{};
-
-private:
-    static void _nop( std::string_view layer, std::string_view log ) {}
-
-    static void _push( std::string_view layer, std::string_view log ) {
-        std::string& current = _layers[ layer.data() ];
-
-        if( !current.empty() ) current += '\n';
-
-        ( current += '\t' ) += log;
-    }
-
-    inline static void ( *_route )( std::string_view, std::string_view ) = _nop;
-
-public:
-    static void push( std::string_view layer, std::string_view log ) {
-        std::invoke( _route, layer, log );
-    }
-
-    static void release() {
-        if( _route == _nop ) return;
-
-        std::cout << OUTBOUND_REPLY_MESSAGE;
-
-        for( auto& [ layer, log ] : _layers )
-            std::cout << "**" << layer << "**\n" << log << "\n\n";
-    }
-
-public:
-    static bool is_critical() {
-        return _layers.contains( CRITICAL );
-    }
-
-public:
-    static void uplink() {
-        _route = _push;
-    }
-
-    static void kill() {
-        _route = _nop;
-    }
-
-    static bool has_uplink() {
-        return _route == _push;
-    }
-
-public:
-    static void if_uplinked( std::function< void() > op ) {
-        if( !has_uplink() ) return;
-
-        std::invoke( op );
-    }
-
-};
-
-
-
-template< typename T >
-using Ref = T&;
-
-using Voice_auto_plays_pairs = std::vector< std::pair< std::string, double > >;
-using Tick_pair              = std::pair< size_t, size_t >;
-
-#define GUI_OP( name ) inline static void name( Guild guild, User user, Ref< Inbounds > ins )
+using namespace std::string_view_literals;
 
 
 
@@ -652,14 +395,16 @@ private:
 
 
 
-class Stream : public std::ostringstream {
+class Stream : public std::stringstream {
 public:
-    using Base = std::ostringstream;
+    using Base = std::stringstream;
 
 public:
     Stream() = default;
 
-    using Base::Base;
+    Stream( Stream&& other ) {
+        static_cast< Base& >( *this ) = std::move( static_cast< Base& >( other ) );
+    }
 
 public:
     operator std::string() const {
@@ -672,7 +417,516 @@ public:
 
 };
 
+Stream operator ""stm ( const char* str, size_t ) {
+    return Stream{} << str;
+}
+
 #pragma endregion BOOSTERS
+
+
+
+#pragma region OUTBOUND_STRUCTURES
+
+class Outbound {
+public:
+    class Message {
+    public:
+        class Content : public std::stringstream {
+        public:
+            using Base = std::stringstream;
+        
+        public:
+            using Base::Base;
+
+        public:
+            Content() = default;
+
+            template< typename T >
+            requires requires {
+                std::stringstream{} << T{};
+            }
+            Content( const T& _T ) {
+                *this << _T;
+            }
+
+        public:
+            operator const char* () {
+                return this->view().data();
+            }
+
+        };
+
+    public:
+        Content   content   = {};
+
+    public:
+        void outlink() {
+            std::cout
+                << OUTBOUND_REPLY_MESSAGE
+                << content;
+        }
+    
+    };
+
+public:
+    class Embed {
+    public:
+        std::string   title         = {};
+        std::string   description   = {};
+        std::string   color         = {};
+        std::string   image         = {};
+
+    public:
+        void outlink() {
+            std::cout
+                << OUTBOUND_REPLY_EMBED
+                << ( title.empty() ? " " : title )
+
+                << OUTBOUND_LOW_SPLIT
+                << ( description.empty() ? " " : description )
+
+                << OUTBOUND_LOW_SPLIT
+                << ( color.empty() ? "000000" : color )
+
+                << OUTBOUND_LOW_SPLIT
+                << ( IMAGES_EMBEDS_PATH_MASTER + '\\' + ( image.empty() ? "empty.png" : image ) );
+        }
+
+    };
+
+};
+
+#pragma endregion OUTBOUND_STRUCTURES
+
+
+
+class Inbounds : public std::deque< std::string > {
+public:
+    using Container = std::deque< std::string >;
+
+public:
+    using Container::Container;
+
+public:
+    static constexpr int   mandatory_ins_count   = 5;
+
+public:
+    Inbounds() = default;
+
+    Inbounds( int arg_count, char** args ) {
+        for( int idx = 0; idx < mandatory_ins_count; ++idx ) {
+            _out_refs[ idx ] = args[ idx + 1 ];
+        }
+
+        for( int idx = mandatory_ins_count + 1; idx < arg_count; ++idx ) {
+            if( args[ idx ][ 0 ] == '-' )
+                _flags.insert( args[ idx ] );
+            else
+                this->emplace_back( args[ idx ] );
+        }
+    }
+
+private:
+    enum _OUT_REFS_ACCESS_IDX {
+        _EVENT, _GUILD_ID, _VOICE_ID, _USER_ID, _USER_VOICE_ID
+    };
+
+    std::string                    _out_refs[ mandatory_ins_count ]   = {};
+    std::set< std::string_view >   _flags                             = {};
+
+public:
+    auto& event() const {
+        return _out_refs[ _EVENT ];
+    }
+
+    auto& guild_id() const {
+        return _out_refs[ _GUILD_ID ];
+    }
+
+    auto& voice_id() const {
+        return _out_refs[ _VOICE_ID ];
+    }
+
+    auto& user_id() const {
+        return _out_refs[ _USER_ID ];
+    }
+
+    auto& user_voice_id() const {
+        return _out_refs[ _USER_VOICE_ID ];
+    }
+
+public:
+    bool voice_connected() const {
+        return !this->voice_id().empty();
+    }
+
+    bool user_voice_connected() const {
+        return !this->user_voice_id().empty();
+    }
+
+public:
+    bool operator () ( std::string_view flag ) const {
+        return _flags.find( flag ) != _flags.end();
+    }
+
+public:
+    template< typename T >
+    requires( std::is_arithmetic_v< T > )
+    auto max() {
+        if constexpr( std::is_same_v< int64_t, T > )
+            return _max< T >( std::stoll );
+        else if constexpr( std::is_same_v< double, T > )
+            return _max< T, size_t* >( std::stod, nullptr );
+    }
+
+private:
+    template< typename T, typename ...Xtra_args >
+    requires( std::is_arithmetic_v< T > )
+    std::optional< T > _max( T ( *func )( const std::string&, Xtra_args... ), Xtra_args&&... xtra_args ) {
+        std::optional< T > max{};
+
+        for( auto& in : *this ) {
+            try {
+                if(
+                    T value = std::invoke( func, in, xtra_args... );
+                    value > max.value_or( std::numeric_limits< T >::min() )
+                )
+                    max = value;
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return max;
+    }
+
+public:
+    auto first_str( const std::vector< std::string_view >& strs ) {
+        std::string_view first = {};
+
+        for( auto& in : *this ) {
+            if(
+                auto itr = std::find( strs.begin(), strs.end(), in );
+                itr != strs.end()
+            ) {
+                first = *itr;
+
+                break;
+            }
+        }
+
+        return first;
+    }
+
+public:
+    class FE_payload : public std::bitset< 32 > {
+    public:
+        int    done_count   = 0;
+        int    missing_at   = 0;
+        bool   abort        = false;
+    };
+
+public:
+    template< typename ...Args >
+    FE_payload for_each(
+        std::pair<
+            std::function< Args( const std::string& ) >,
+            std::function< bool( Args&, FE_payload& ) >
+        >... builds,
+
+        std::function< void( Args&..., FE_payload& ) > op
+    ) {
+        return _for_each< Args... >( builds..., op, std::optional< Args >{}... );
+    }
+
+private:
+    template< typename ...Args >
+    FE_payload _for_each(
+        std::pair<
+            std::function< Args( const std::string& ) >,
+            std::function< bool( Args&, FE_payload& ) >
+        >... builds,
+
+        std::function< void( Args&..., FE_payload& ) > op,
+
+        std::optional< Args >... args
+    ) {
+        FE_payload payload{};
+
+        while( true ) {
+            if( payload.abort )
+                break;
+
+            ( ( args = this->_extract_match( builds, payload ) ), ... );
+
+            if( ( ( ++payload.missing_at && !args.has_value() ) || ... ) )
+                break;
+
+            std::invoke( op, args.value()..., payload );
+
+            payload.done_count++;
+            payload.missing_at = 0;
+        }
+
+        payload.missing_at -= 1;
+
+        return payload;
+    }
+
+    template< typename T >
+    std::optional< T > _extract_match(
+        std::pair<
+            std::function< T( const std::string& ) >,
+            std::function< bool( T&, FE_payload& ) >
+        > build,
+
+        FE_payload& payload
+    ) {
+        auto itr = this->begin();
+
+        for( ; itr != this->end(); ++itr ) {
+            try {
+                T entry = build.first( *itr );
+
+                if( !build.second( entry, payload ) )
+                    continue;
+
+                this->erase( itr );
+
+                return std::move( entry );
+
+            } catch( ... ) {
+                continue;
+            }
+        }
+
+        return {};
+    }
+
+};
+
+
+
+class DebugLayer {
+public:
+    inline static const char*   CRITICAL   = "Criticals";
+
+private:
+    inline static std::map< std::string, std::string >   _layers{};
+
+private:
+    static void _nop( std::string_view layer, std::string_view log ) {}
+
+    static void _push( std::string_view layer, std::string_view log ) {
+        std::string& current = _layers[ layer.data() ];
+
+        if( !current.empty() ) current += '\n';
+
+        ( current += '\t' ) += log;
+    }
+
+    inline static void ( *_route )( std::string_view, std::string_view ) = _nop;
+
+public:
+    static void push( std::string_view layer, std::string_view log ) {
+        std::invoke( _route, layer, log );
+    }
+
+    static void push_critical( std::string_view log ) {
+        _push( CRITICAL, log );
+    }
+
+    static void release() {
+        if( _route == _nop ) return;
+
+        std::cout << OUTBOUND_REPLY_MESSAGE;
+
+        for( auto& [ layer, log ] : _layers )
+            std::cout << "**" << layer << "**\n" << log << "\n\n";
+    }
+
+public:
+    static bool is_critical() {
+        return _layers.contains( CRITICAL );
+    }
+
+public:
+    static void uplink() {
+        _route = _push;
+    }
+
+    static void kill() {
+        _route = _nop;
+    }
+
+    static bool has_uplink() {
+        return _route == _push;
+    }
+
+public:
+    static void uplinked_op( std::function< void() > op ) {
+        if( !has_uplink() ) return;
+
+        std::invoke( op );
+    }
+
+};
+
+#define DEBUG_LAYER_PUSH_ARGS_V std::vector< std::string_view > location, std::string log
+
+class _PROTO_DebugLayer {
+protected:
+    class Cascade {
+    public:
+        Cascade() = default;
+
+        Cascade( const auto& data )
+            : _data{ data }
+        {}
+
+        Cascade( auto&& data ) noexcept
+            : _data{ std::move( data ) }
+        {}
+
+    protected:
+        std::variant< std::string, std::vector< Cascade > >   _data   = {};
+
+    public:
+        std::string& msg() { 
+            return std::get< 0 >( _data ); 
+        }
+
+        std::vector< Cascade >& cat() { 
+            return std::get< 1 >( _data ); 
+        }
+
+        std::string& cat_head() { 
+            return this->cat().front().msg(); 
+        }
+
+        bool is_cat() const {
+            return _data.index() == 1;
+        }
+
+    public:
+        bool operator == ( const char* str ) const {
+            if( !this->is_cat() ) return false;
+
+            return const_cast< Cascade* >( this )->cat_head() == str;
+        }
+
+    };
+
+public:
+    using Cat = std::vector< Cascade >;
+
+protected:
+    inline static Cat   _root   = {};
+
+protected:
+    static void _nop( DEBUG_LAYER_PUSH_ARGS_V ) {}
+
+    static void _push( DEBUG_LAYER_PUSH_ARGS_V ) {
+        Cat* cat = &_root;
+
+        for( auto branch = std::begin( location ); branch != std::end( location ); ++branch ) {
+            auto itr = std::find( cat->begin(), cat->end(), branch->data() );
+
+            if( itr != cat->end() ) {
+                if( !itr->is_cat() ) {
+                    // Handle case
+                    return;
+                }
+
+                cat = &itr->cat();
+            } else {
+                do {
+                    cat = &cat->emplace_back( Cat{ { branch->data() } } ).cat();
+                } while( ++branch != std::end( location ) );
+
+                break;
+            }
+        }
+
+        cat->emplace_back( std::move( log ) );
+    }
+
+    inline static void ( *_route )( DEBUG_LAYER_PUSH_ARGS_V ) = _PROTO_DebugLayer::_nop;
+
+public:
+    static void push( DEBUG_LAYER_PUSH_ARGS_V ) {
+        std::invoke( _PROTO_DebugLayer::_route, location, log );
+    }
+
+public:
+    static void uplink() {
+        _PROTO_DebugLayer::_route = _PROTO_DebugLayer::_push;
+    }
+
+    static void downlink() {
+        _PROTO_DebugLayer::_route = _PROTO_DebugLayer::_nop;
+    }
+
+    static bool is_uplinked() {
+        return _PROTO_DebugLayer::_route == _PROTO_DebugLayer::_push;
+    }
+
+public:
+    static void uplinked_op( std::function< void() > op ) {
+        if( !_PROTO_DebugLayer::is_uplinked() ) return;
+
+        std::invoke( op );
+    }
+
+protected:
+    static void _outlink( Outbound::Message& msg, Cat& root, size_t depth ) {
+        auto shift = [ & ] () -> auto& {
+            for( size_t n = 0; n < depth; ++n )
+                msg.content << "\t\t\t";
+
+            return msg.content;
+        };
+
+        for( auto& entry : root ) {
+            if( entry.is_cat() ) {
+                shift() << "**" << entry.cat_head() << "**\n";
+
+                _PROTO_DebugLayer::_outlink( msg, entry.cat(), depth + 1 );
+            } else {
+                if( &entry != &root.front() )
+                    shift() << entry.msg() << '\n';
+            }
+        }
+    }
+
+public:
+    static void outlink() {
+        if( !_PROTO_DebugLayer::is_uplinked() ) return;
+
+        Outbound::Message msg{};
+
+        _PROTO_DebugLayer::_outlink( msg, _root, 0 );
+
+        msg.outlink();
+    }
+
+};
+
+
+
+template< typename T >
+using Ref = T&;
+
+using Voice_auto_plays_pairs = std::vector< std::pair< std::string, double > >;
+using Tick_pair              = std::pair< size_t, size_t >;
+
+
+#define IGU_ARGS_V Ref< Inbounds > ins, Guild guild, User user
+#define IGU_ARGS_I Ref< Inbounds >, Guild, User
+#define IGU_ARGS_U ins, guild, user
+
+#define IGU_OP( name ) static void name( IGU_ARGS_V )
 
 
 
@@ -985,47 +1239,17 @@ public:
 #pragma endregion INBOUND_STRUCTURES
 
 
-#pragma region OUTBOUND_STRUCTURES
 
-struct Embed {
-public:
-    const std::string_view&   title         = {};
-    const std::string_view&   description   = {};
-    const std::string_view&   color         = {};
-    const std::string_view&   image         = {};
-
-public:
-    void outbound() {
-        std::cout
-            << OUTBOUND_REPLY_EMBED
-            << ( title.empty() ? " " : title )
-
-            << OUTBOUND_LOW_SPLIT
-            << ( description.empty() ? " " : description )
-
-            << OUTBOUND_LOW_SPLIT
-            << ( color.empty() ? "000000" : color )
-
-            << OUTBOUND_LOW_SPLIT
-            << ( IMAGES_EMBEDS_PATH_MASTER + '\\' + ( image.empty() ? "empty.png" : image ) );
-    }
-
-};
-
-#pragma endregion OUTBOUND_STRUCTURES
-
-
-
-class Instruc {
+class Powers {
 public:
     using Keyword = std::tuple< int, std::vector< std::string_view > >;
 
-    using Function = std::function< void( Guild, User, Ref< Inbounds > ) >;
+    using Function = std::function< void( Ref< Inbounds >, Guild, User ) >;
 
     using Map = std::map< size_t, Function >;
 
 public:
-    static void execute( Guild guild, User user, Ref< Inbounds > ins ) {
+    static void execute( IGU_ARGS_V ) {
         if( std::tolower( ins.at( 0 ).at( 0 ) ) == GUILDS_AHRI_PREFIX[ 0 ] ) {
             std::for_each( ins.at( 0 ).begin(), ins.at( 0 ).end(), [] ( char& c ) -> void {
                 c = std::tolower( c );
@@ -1035,7 +1259,7 @@ public:
 
             ins.pop_front();
 
-            Python::main( guild, user, ins );
+            Python::main( IGU_ARGS_U );
 
             return;
         }
@@ -1052,16 +1276,16 @@ public:
 
 
         try {
-            std::invoke( make_sense_of_2( ins ), guild, user, ins );
+            std::invoke( make_sense_of_2( ins ), IGU_ARGS_U );
 
         } catch( std::out_of_range& err ) {
-            what( guild, user, ins );
+            what( IGU_ARGS_U );
 
         } catch( std::runtime_error& err ) {
-            DebugLayer::push( DebugLayer::CRITICAL, "<execute>: "s + err.what() );
+            _PROTO_DebugLayer::push( { "Powers", "<execute>" }, "Runtime error: "s + err.what() );
 
         } catch( ... ) {
-            DebugLayer::push( DebugLayer::CRITICAL, "<execute>: Unknown RTE." );
+            _PROTO_DebugLayer::push( { "Powers", "<execute>" }, "Unknown runtime error." );
         }
     }
 
@@ -1163,7 +1387,7 @@ public:
 
             ins.push_front( std::move( sound ) );
 
-            Instruc::Voices::play( guild, user, ins );
+            Powers::Voices::play( guild, user, ins );
 
             return true;
         };
@@ -1193,22 +1417,25 @@ public:
         ExtractorRet(
             Function                     func,
             double                       conf,
-            const Inbounds::Container&   cnt
+            const Inbounds::Container&   cnt,
+            bool                         asgn   = true
         )
-        : function{ func }, confidence{ conf }, container{ cnt }
+        : function{ func }, confidence{ conf }, container{ cnt }, assign{ asgn }
         {}
 
         ExtractorRet(
             Function                func,
             double                  conf,
-            Inbounds::Container&&   cnt
+            Inbounds::Container&&   cnt,
+            bool                    asgn   = true
         )
-        : function{ func }, confidence{ conf }, container{ std::move( cnt ) }
+        : function{ func }, confidence{ conf }, container{ std::move( cnt ) }, assign{ asgn }
         {}
 
         Function              function     = {};
         double                confidence   = {};
         Inbounds::Container   container    = {};
+        bool                  assign       = true;
     };
 
 
@@ -1235,11 +1462,11 @@ public:
         } );
 
 
-        DebugLayer::if_uplinked( [ & ] {
+        _PROTO_DebugLayer::uplinked_op( [ & ] {
              for( auto& kw : kws )
-                DebugLayer::push(
-                    "<extract_instruction_sense_2>: Extracted keywords:",
-                    std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ]
+                _PROTO_DebugLayer::push(
+                    { "Powers", "<extract_instruction_sense_2>", "Keywords:" },
+                    std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ].data()
                 );
         } );
 
@@ -1282,14 +1509,17 @@ public:
 
                 double confidence = accumulated_match / activation_count;
 
-                DebugLayer::if_uplinked( [ & ] {
-                    DebugLayer::push(
-                        "<extract_instruction_sense_2>: Extracted chain:",
-                        Stream{} << chain << " with **" << confidence << "** confidence."
+                _PROTO_DebugLayer::uplinked_op( [ & ] {
+                    _PROTO_DebugLayer::push(
+                        { "Powers", "<extract_instruction_sense_2>" },
+                        "Extracted \""stm << chain << "\" with **" << confidence << "** confidence."
                     );
 
-                    for( auto& in : ins )
-                        DebugLayer::push( "<extract_instruction_sense_2>: Other words:", in );
+                    for( auto& in : cnt )
+                        _PROTO_DebugLayer::push( 
+                            { "Powers", "<extract_instruction_sense_2>", "Remaining words:" }, 
+                            "\""s + in + "\""
+                        );
                 } );
 
                 return { op, confidence, std::move( cnt ) }; /* move? */
@@ -1298,8 +1528,11 @@ public:
             }
         }
 
-        DebugLayer::if_uplinked( [ & ] {
-            DebugLayer::push( "<extract_instruction_sense_2>: Info:", "Sense confidence too low to consider." );
+        _PROTO_DebugLayer::uplinked_op( [ & ] {
+            _PROTO_DebugLayer::push( 
+                { "Powers", "<extract_instruction_sense_2>" }, 
+                "All sense confidence too low to complete extraction." 
+            );
         } );
 
         return { nullptr, 0.0, {} };
@@ -1316,9 +1549,9 @@ public:
         if( !sound.empty() ) 
             sound.pop_back();
         else {
-            DebugLayer::push( 
-                DebugLayer::CRITICAL, 
-                "<extract_sound_sense_2>: Attempt to extract sound sense from an empty inbounds' deque." 
+            _PROTO_DebugLayer::push( 
+                { "Powers", "<extract_sound_sense_2>" },
+                "Attempt to extract sound sense from an empty inbounds' deque." 
             );
 
             return { nullptr, 0.0, {} };
@@ -1343,18 +1576,21 @@ public:
 
 
         if( best_match.second.empty() ) {
-            DebugLayer::if_uplinked( [ & ] {
-                DebugLayer::push( "<extract_sound_sense_2>:", "Sense too low to consider." );
+            _PROTO_DebugLayer::uplinked_op( [ & ] {
+                _PROTO_DebugLayer::push( 
+                    { "Powers", "<extract_sound_sense_2>" }, 
+                    "All senses too low to complete extraction." 
+                );
             } );
 
             return { nullptr, 0.0, {} };
         }
 
 
-        DebugLayer::if_uplinked( [ & ] {
-            DebugLayer::push(
-                "<extract_sound_sense_2>: Extracted sound:",
-                Stream{} << best_match.second << " with **" << best_match.first << "** confidence."
+        _PROTO_DebugLayer::uplinked_op( [ & ] {
+            _PROTO_DebugLayer::push(
+                { "Powers", "<extract_sound_sense_2>" },
+                "Extracted \""stm << best_match.second << "\" with **" << best_match.first << "** confidence."
             );
         } );
 
@@ -1381,20 +1617,23 @@ public:
 
         
         if( set.empty() ) 
-            throw std::runtime_error{ "<make_sense_of_2>: Empty extractor set." };
+            throw std::runtime_error{ "Powers: <make_sense_of_2> Empty extractor set." };
 
 
         auto& ext = *set.begin();
 
         if( ext.confidence < 0.5 ) {
-            DebugLayer::if_uplinked( [ & ] {
-                DebugLayer::push( "<make_sense_of_2>:", "All senses too low to consider." );
+            _PROTO_DebugLayer::uplinked_op( [ & ] {
+                _PROTO_DebugLayer::push( 
+                    { "Powers", "<make_sense_of_2>" }, 
+                    "All senses too low to consider." 
+                );
             } );
 
-            throw std::out_of_range{ "<make_sense_of_2>: Sense extraction failed." };
+            throw std::out_of_range{ "Powers: <make_sense_of_2> Sense extraction failed." };
         }
 
-        if( !ext.container.empty() )
+        if( ext.assign )
             ins.assign( ext.container.begin(), ext.container.end() );
 
         return ext.function;
@@ -1411,10 +1650,10 @@ public:
                     best_match = { &kw, match };
 
         if( best_match.first ) {
-            DebugLayer::if_uplinked( [ & ] {
-                DebugLayer::push(
-                    "<calibrate_for_keyword_2>: Info:",
-                    Stream{} << str << " -> " << std::get< 1 >( *best_match.first )[ 0 ] << " @**" << best_match.second << "**"
+            _PROTO_DebugLayer::uplinked_op( [ & ] {
+                _PROTO_DebugLayer::push(
+                    { "Powers", "<calibrate_for_keyword_2>" },
+                    "\""stm << str << "\" -> \"" << std::get< 1 >( *best_match.first )[ 0 ] << "\" with **" << best_match.second << "**"
                 );
             } );
         }
@@ -1427,53 +1666,52 @@ public:
 #pragma region Branches
 
 public:
-    GUI_OP( nop ) {}
+    static void nop( IGU_ARGS_V ) {}
 
-    GUI_OP( what ) {
-        std::cout
-            << OUTBOUND_REPLY_MESSAGE
-            << "Whaaaat are you sayinnnnn...";
+    IGU_OP( what ) {
+        Outbound::Message{
+            content: "Whaaaat are you sayinnnnnn..."
+        }.outlink();
     }
 
 public:
-    GUI_OP( hash ) {
+    IGU_OP( hash ) {
         if( !ins.at( 0 ).starts_with( '\"' )
             ||
             !ins.at( 0 ).ends_with( '\"' )
         ) {
-            std::cout
-                << OUTBOUND_REPLY_MESSAGE
-                << "Enclose the string in double quotes first.";
+            Outbound::Message{
+                content: "Enclose the string in double quotes first."
+            }.outlink();
 
             return;
         }
 
         ins.at( 0 ) = ins.at( 0 ).substr( 1, ins.at( 0 ).size() - 2 );
 
-        std::cout
-            << OUTBOUND_REPLY_MESSAGE
-            << std::hash< std::remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) );
+        Outbound::Message{
+            content: std::hash< std::remove_reference_t< decltype( ins.at( 0 ) ) > >{}( ins.at( 0 ) )
+        }.outlink();
     };
 
 public:
-    GUI_OP( kiss ) {
-        std::cout
-            << OUTBOUND_REPLY_MESSAGE
-            << "https://tenor.com/view/heart-ahri-love-gif-18791933";
-
+    IGU_OP( kiss ) {
+        Outbound::Message{
+            content: "https://tenor.com/view/heart-ahri-love-gif-18791933"
+        }.outlink();
 
         ins.emplace_front( "kiss_1" );
 
-        Instruc::Voices::play( guild, user, ins );
+        Powers::Voices::play( IGU_ARGS_U );
     }
 
-    GUI_OP( pet ) {
-        std::cout
-            << OUTBOUND_REPLY_MESSAGE
-            << "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824";
+    IGU_OP( pet ) {
+        Outbound::Message{
+            content: "https://tenor.com/view/ahri-league-of-legends-headpats-pats-cute-gif-22621824"
+        }.outlink();
     }
 
-    GUI_OP( boobas ) {
+    IGU_OP( boobas ) {
         const char* gifs[] = {
             "https://tenor.com/view/boobs-anime-kawaii-hot-anime-girl-bigboobs-gif-21508889",
             "https://tenor.com/view/anime-boobies-boobs-big-boobs-pretty-gif-17901457",
@@ -1489,18 +1727,18 @@ public:
             "https://tenor.com/view/noucome-oppai-smack-anime-ayame-reikadou-gif-20051530"
         };
 
-        std::cout
-            << OUTBOUND_REPLY_MESSAGE
-            << gifs[ RANDOM % std::size( gifs ) ];
+        Outbound::Message{
+            content: gifs[ RANDOM % std::size( gifs ) ]
+        }.outlink();
     }
 
 public:
     struct Voices {
-        GUI_OP( connect ) {
-            if( ins.user_voice_id().empty() ) {
-                std::cout
-                    << OUTBOUND_REPLY_MESSAGE
-                    << "Where are you...";
+        IGU_OP( connect ) {
+            if( !ins.user_voice_connected() ) {
+                Outbound::Message{
+                    content: "Where are you..."
+                }.outlink();
 
                 return;
             }
@@ -1510,33 +1748,39 @@ public:
                 << ins.user_voice_id();
         }
 
-        GUI_OP( disconnect ) {
+        IGU_OP( disconnect ) {
             std::cout
                 << OUTBOUND_VOICE_DISCONNECT
                 << guild.id();
         }
 
-        GUI_OP( play ) {
-            if( ins.user_vc_connected() && ( ins.voice_id() == ins.user_voice_id() ) ) {
-                std::cout
-                << OUTBOUND_VOICE_PLAY
-                << guild.id()
-                << OUTBOUND_LOW_SPLIT
-                << Sound::path_of( ins.at( 0 ) );
-            } else {
-                std::cout
-                << OUTBOUND_REPLY_MESSAGE
-                << "Where";
-            }
+        IGU_OP( play ) {
+            if( ins.event() == INBOUND_MESSAGE )
+                if( !( ins.user_voice_connected() && ( ins.voice_id() == ins.user_voice_id() ) ) )
+                    goto L_WHERE;
+
+            std::cout
+            << OUTBOUND_VOICE_PLAY
+            << guild.id()
+            << OUTBOUND_LOW_SPLIT
+            << Sound::path_of( ins.at( 0 ) );
+
+            return;
+    
+            L_WHERE:
+
+            std::cout
+            << OUTBOUND_REPLY_MESSAGE
+            << "Where are you my cutey patootie?";
         }
 
-        GUI_OP( stop ) {
+        IGU_OP( stop ) {
             std::cout
                 << OUTBOUND_VOICE_STOP
                 << guild.id();
         }
 
-        GUI_OP( sounds_show ) {
+        IGU_OP( sounds_show ) {
         std::string path{};
 
         path.reserve( PATH_MAX );
@@ -1553,7 +1797,7 @@ public:
             accumulated += "\"**";
         }
 
-        Embed{
+        Outbound::Embed{
             title: "DJ Ahri spinnin' these bad boys:",
 
             description:
@@ -1564,19 +1808,19 @@ public:
             color: EMBEDS_COLOR_INFO,
 
             image: "vinyl_purple.png"
-        }.outbound();
+        }.outlink();
     }
     };
 
 public:
     struct Settings {
-        GUI_OP( voice_wait_set ) {
+        IGU_OP( voice_wait_set ) {
             try {
                 Setting::voice_hi_wait_to( std::abs( std::stod( ins.at( 0 ) ) ) * 1000.0 );
 
                 auto value = static_cast< double >( Setting::voice_hi_wait() );
 
-                Embed{
+                Outbound::Embed{
                     title:
                         Stream{}
                         << "Now waiting **"
@@ -1587,31 +1831,31 @@ public:
 
                     color: EMBEDS_COLOR_INFO
 
-                }.outbound();
+                }.outlink();
 
             } catch( const std::invalid_argument& err ) {
-                Embed{
+                Outbound::Embed{
                     title: "Try again after looking at this: ",
 
                     description: "https://www.skillsyouneed.com/num/numbers.html",
 
                     color: "FF0000"
 
-                }.outbound();
+                }.outlink();
 
             } catch( const std::out_of_range& err ) {
-                Embed{
+                Outbound::Embed{
                     title: "I can't count that much...",
 
                     color: "FF0000"
 
-                }.outbound();
+                }.outlink();
 
             }
         }
 
-        GUI_OP( voice_wait_show ) {
-                Embed{
+        IGU_OP( voice_wait_show ) {
+                Outbound::Embed{
                     title:
                         Stream{}
                         << "Waiting **"
@@ -1619,13 +1863,13 @@ public:
                         << "** seconds before saying hi!",
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
             }
     };
 
 public:
     struct Guilds {
-        GUI_OP( prefix_set ) {
+        IGU_OP( prefix_set ) {
             if( ins.at( 0 ) == GUILDS_AHRI_PREFIX ) goto L_NOT_ELIGIBLE;
 
             {
@@ -1633,7 +1877,7 @@ public:
 
             guild.prefix_to( ins.at( 0 ) );
 
-            Embed{
+            Outbound::Embed{
                 title:
                     Stream{}
                     << "This guild's prefix is now \"" << guild.prefix() << "\".",
@@ -1643,7 +1887,7 @@ public:
                     << "Changed it from \"" << last << "\".",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
 
             return;
             }
@@ -1658,17 +1902,17 @@ public:
             }
         }
 
-        GUI_OP( prefix_show ) {
-                Embed{
+        IGU_OP( prefix_show ) {
+                Outbound::Embed{
                     title:
                         Stream{}
                         << "This guild's prefix is \"" << guild.prefix() << "\".",
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
             }
 
-        GUI_OP( voice_auto_plays_add ) {
+        IGU_OP( voice_auto_plays_add ) {
             enum Payload_info {
                 PROBS_CALIBD
             };
@@ -1734,7 +1978,7 @@ public:
                     << "\n\n"
                     << "Probabilities did not account to 1, therefore they have been calibrated.";
 
-                Embed{
+                Outbound::Embed{
                     title:
                         Stream{}
                         << "Pushed "
@@ -1746,7 +1990,7 @@ public:
                     description: embed_desc_acc,
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
 
                 return;
             }
@@ -1768,29 +2012,29 @@ public:
             }
         }
 
-        GUI_OP( voice_auto_plays_clear ) {
+        IGU_OP( voice_auto_plays_clear ) {
             File::overwrite(
                 GUILDS_PATH_MASTER + '\\' + guild.id(),
                 GUILDS_PATH_AUTO_VOICE_PLAYS,
                 ""
             );
 
-            Embed{
+            Outbound::Embed{
                 title: "Cleared this guild's voice auto plays.",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
-        GUI_OP( voice_auto_plays_show ) {
+        IGU_OP( voice_auto_plays_show ) {
             auto pairs = guild.voice_auto_plays();
 
             if( pairs.empty() ) {
-                Embed{
+                Outbound::Embed{
                     title: "This guild has no voice auto plays.",
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
 
                 return;
             }
@@ -1801,16 +2045,16 @@ public:
             for( auto& pair : pairs )
                 accumulated << pair.first << " ---** " << pair.second << "**\n";
 
-            Embed{
+            Outbound::Embed{
                 title: "These are this guild's voice auto plays:",
 
                 description: accumulated.str(),
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
-        GUI_OP( gamble_rig_set ) {
+        IGU_OP( gamble_rig_set ) {
             enum {
                 RIG_IN_RANGE = 0
             };
@@ -1834,7 +2078,7 @@ public:
 
                     guild.rig_to( rig_value );
 
-                    Embed{
+                    Outbound::Embed{
                         title:
                             Stream{} << "Gamble rig value is now **" << rig_value << "**.",
 
@@ -1843,7 +2087,7 @@ public:
 
                         color: EMBEDS_COLOR_INFO
 
-                    }.outbound();
+                    }.outlink();
                 }
             );
 
@@ -1873,17 +2117,17 @@ public:
             }
         }
 
-        GUI_OP( gamble_rig_show ) {
-            Embed{
+        IGU_OP( gamble_rig_show ) {
+            Outbound::Embed{
                 title:
                     Stream{}
                     << "This guild's gamble rig is **" << guild.rig() << "**.",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
-        GUI_OP( steal_chance_set ) {
+        IGU_OP( steal_chance_set ) {
             enum {
                 IN_RANGE = 0
             };
@@ -1907,13 +2151,13 @@ public:
 
                     guild.steal_chance_to( chance );
 
-                    Embed{
+                    Outbound::Embed{
                         title:
                             Stream{} << "Steal chance is now **" << chance << "**.",
 
                         color: EMBEDS_COLOR_INFO
 
-                    }.outbound();
+                    }.outlink();
                 }
             );
 
@@ -1943,17 +2187,17 @@ public:
             }
         }
 
-        GUI_OP( steal_chance_show ) {
-            Embed{
+        IGU_OP( steal_chance_show ) {
+            Outbound::Embed{
                 title:
                     Stream{}
                     << "This guild's steal chance is **" << guild.steal_chance() << "**.",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
-        GUI_OP( ticks_voice_set ) {
+        IGU_OP( ticks_voice_set ) {
             enum {
                 IN_RANGE,
                 MATCH_FOUND
@@ -2036,7 +2280,7 @@ public:
                 embed_title << "** seconds.";
 
 
-                Embed{
+                Outbound::Embed{
                     title: embed_title,
 
                     description:
@@ -2046,7 +2290,7 @@ public:
                         << "** auto sounds in this guild.",
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
 
 
                 return;
@@ -2074,7 +2318,7 @@ public:
             }
         }
 
-        GUI_OP( ticks_voice_show ) {
+        IGU_OP( ticks_voice_show ) {
             auto [ low, high ] = guild.ticks_voice();
 
             Stream embed_title{};
@@ -2088,7 +2332,7 @@ public:
             embed_title << "** seconds.";
 
 
-            Embed{
+            Outbound::Embed{
                 title: embed_title,
 
                 description:
@@ -2098,11 +2342,11 @@ public:
                     << "** auto sounds in this guild.",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
-        GUI_OP( mul_show ) {
-            Embed {
+        IGU_OP( mul_show ) {
+            Outbound::Embed{
                 title:
                     Stream{}
                     << "Guild's credit multiplier is **"
@@ -2110,15 +2354,15 @@ public:
                     << "**.",
 
                 color: EMBEDS_COLOR_INFO
-            }.outbound();
+            }.outlink();
         }
 
     };
 
 public:
     struct Users {
-        GUI_OP( credits_show ) {
-            Embed{
+        IGU_OP( credits_show ) {
+            Outbound::Embed{
                 title:
                     Stream{}
                     << "You have **"
@@ -2135,21 +2379,19 @@ public:
 
                 image: "credits.png"
 
-            }.outbound();
+            }.outlink();
         };
 
-        GUI_OP( voice_hi_set ) {
-            voice_sound_set( guild, user, ins, User::voice_hi_to, "intro" );
+        IGU_OP( voice_hi_set ) {
+            voice_sound_set( IGU_ARGS_U, User::voice_hi_to, "intro" );
         }
 
-        GUI_OP( voice_bye_set ) {
-            voice_sound_set( guild, user, ins, User::voice_bye_to, "outro" );
+        IGU_OP( voice_bye_set ) {
+            voice_sound_set( IGU_ARGS_U, User::voice_bye_to, "outro" );
         }
 
         static void voice_sound_set(
-            Guild              guild,
-            User               user,
-            Ref< Inbounds >    ins,
+            IGU_ARGS_V,
             auto ( User::   *method ) ( auto ),
             std::string_view type
         ) {
@@ -2164,11 +2406,11 @@ public:
 
 
             {
-            Embed{
+            Outbound::Embed{
                 title: "There's no such sound...",
 
                 color: "FF0000"
-            }.outbound();
+            }.outlink();
 
             return;
             }
@@ -2177,7 +2419,7 @@ public:
             L_SOUND_FOUND: {
                 std::invoke( method, &user, sound );
 
-                Embed{
+                Outbound::Embed{
                     title:
                         Stream{}
                         << "Your "
@@ -2185,11 +2427,11 @@ public:
                         << " sound is now \"" << sound << "\".",
 
                     color: EMBEDS_COLOR_INFO
-                }.outbound();
+                }.outlink();
             }
         }
 
-        GUI_OP( credits_steal ) {
+        IGU_OP( credits_steal ) {
             enum {
                 NO_CREDITS
             };
@@ -2237,7 +2479,7 @@ public:
                         user.credits_add( stolen, guild );
 
 
-                        Embed {
+                        Outbound::Embed{
                             title: "Sneaky beaky.",
 
                             description:
@@ -2249,7 +2491,7 @@ public:
 
                             color: EMBEDS_COLOR_INFO
 
-                        }.outbound();
+                        }.outlink();
                     };
 
                     auto steal_failed = [ & ] () -> void {
@@ -2262,7 +2504,7 @@ public:
                         user.credits_to( credits - owed, guild );
 
 
-                        Embed {
+                        Outbound::Embed{
                             title: "Busted!",
 
                             description:
@@ -2274,7 +2516,7 @@ public:
 
                             color: EMBEDS_COLOR_INFO
 
-                        }.outbound();
+                        }.outlink();
                     };
 
 
@@ -2321,7 +2563,7 @@ public:
         static constexpr std::array< const char*, 3 > colors{ "red", "black", "green" };
 
     public:
-        GUI_OP( main ) {
+        IGU_OP( main ) {
             const auto credits = user.credits( guild );
 
             auto payload
@@ -2368,7 +2610,7 @@ public:
                     user.credits_to( credits + acc, guild );
 
 
-                    Embed{
+                    Outbound::Embed{
                         title:
                             Stream{}
                             << "Landed on "
@@ -2396,7 +2638,7 @@ public:
 
                             return land % 2 == 0 ? "red.png" : "black.png";
                         } )()
-                    }.outbound();
+                    }.outlink();
                 }
             );
 
@@ -2420,6 +2662,18 @@ public:
                     return;
                 }
             }
+        }
+
+        IGU_OP( coinflip ) {
+            bool is_tails = RANDOM % 2;
+
+            Outbound::Embed{
+                title: is_tails ? "Tails." : "Heads.",
+
+                color: "FFD700",
+
+                image: is_tails ? "coin_tails.png" : "coin_heads.png"
+            }.outlink();
         }
 
     private:
@@ -2452,7 +2706,7 @@ public:
 public:
     class Python {
     public:
-        GUI_OP( main ) {
+        IGU_OP( main ) {
             std::string str{};
 
             for( auto& in : ins )
@@ -2495,7 +2749,8 @@ public:
         { 24, { "boobas", "boobs", "tiddies", "tt" } },
         { 25, { "mul", "multiplier" } },
         { 26, { "guild" } },
-        { 27, { "user" } }
+        { 27, { "user" } },
+        { 28, { "coinflip" } }
     };
 
     inline static Map map = {
@@ -2535,7 +2790,8 @@ public:
         { 3546343074134243021ULL,  Users::credits_steal },
 
         { 15754336788579780731ULL, Gamble::main },
-        { 16987320819845335283ULL, Gamble::main }
+        { 16987320819845335283ULL, Gamble::main },
+        { 6322474587853159699ULL,  Gamble::coinflip }
     };
 
 };
@@ -2546,7 +2802,7 @@ public:
 
 class Message {
 public:
-    GUI_OP( on_create ) {
+    IGU_OP( on_create ) {
         double mul = guild.mul();
 
         user.credits_add( 20.0 * mul, guild );
@@ -2554,14 +2810,14 @@ public:
         guild.mul_to( std::min( mul + 0.001, 10.0 ) );
 
 
-        Instruc::execute( guild, user, ins );
+        Powers::execute( IGU_ARGS_U );
     }
 };
 
 
 class Voice {
 public:
-    GUI_OP( on_update ) {
+    IGU_OP( on_update ) {
         if( ins.voice_id().empty() ) return;
 
 
@@ -2583,7 +2839,7 @@ public:
                 std::chrono::milliseconds( Setting::voice_hi_wait() )
             );
 
-        Instruc::Voices::play( guild, {}, ins );
+        Powers::Voices::play( ins, guild, {} );
     }
 
 };
@@ -2591,20 +2847,20 @@ public:
 
 class Tick {
 public:
-    GUI_OP( on_tick ) {
+    IGU_OP( on_tick ) {
         switch( std::hash< std::string_view >{}( ins.at( 0 ) ) ) {
-            case 7492372067882396056ULL:  voice( guild, user, ins ); break;
+            case 7492372067882396056ULL:  voice( IGU_ARGS_U ); break;
 
-            case 10702603417961775396ULL: init( guild, user, ins ); break;
+            case 10702603417961775396ULL: init( IGU_ARGS_U ); break;
         }
     }
 
 public:
-    GUI_OP( init ) {
-        voice( guild, user, ins );
+    IGU_OP( init ) {
+        voice( IGU_ARGS_U );
     }
 
-    GUI_OP( voice ) {
+    IGU_OP( voice ) {
         Tick::outbound( guild, guild.pull( Guild::ticks_voice ), OUTBOUND_TICK_VOICE );
 
 
@@ -2627,9 +2883,9 @@ public:
         if( itr == pairs.end() )
             return;
 
-        ins.push_front( itr -> first );
+        ins.push_front( itr->first );
 
-        Instruc::Voices::play( guild, {}, ins );
+        Powers::Voices::play( ins, guild, {} );
     }
 
 public:
@@ -2651,7 +2907,7 @@ public:
 
 std::map<
     std::string_view,
-    std::function< void( Guild, User, Ref< Inbounds > ) >
+    std::function< void( IGU_ARGS_I ) >
 >  event_map = {
     { INBOUND_MESSAGE,      Message::on_create },
     { INBOUND_VOICE_UPDATE, Voice::on_update },
@@ -2663,24 +2919,20 @@ std::map<
 int main( int arg_count, char* args[] ) {
     auto dbg_begin_time = std::chrono::high_resolution_clock::now();
 
-    srand(
-        static_cast< unsigned int >(
-            std::chrono::duration_cast< std::chrono::milliseconds >(
-                std::chrono::high_resolution_clock::now().time_since_epoch()
-            ).count()
-        )
-     );
+
+    RANDOM_SEEDING_OP();
 
 
     Inbounds ins{ arg_count, args };
 
-    if( ins( "-debug" ) ) {
-        DebugLayer::uplink();
 
-        DebugLayer::push( "Core inbounds", "Ahri voice ID: "s + ins.voice_id() );
-        DebugLayer::push( "Core inbounds", "Guild ID: "s + ins.guild_id() );
-        DebugLayer::push( "Core inbounds", "User ID: "s + ins.user_id() );
-        DebugLayer::push( "Core inbounds", "User voice ID: "s + ins.user_voice_id() );
+    if( ins( "-debug" ) ) {
+        _PROTO_DebugLayer::uplink();
+
+        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "Voice: "s + ins.voice_id() );
+        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "Guild: "s + ins.guild_id() );
+        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "User: "s + ins.user_id() );
+        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "User voice: "s + ins.user_voice_id() );
     }
 
     Guild guild{ ins.guild_id() };
@@ -2688,13 +2940,13 @@ int main( int arg_count, char* args[] ) {
 
 
     try {
-        event_map.at( ins.event() )( guild, user, ins );
+        std::invoke( event_map.at( ins.event() ), IGU_ARGS_U );
     } catch( std::out_of_range& err ) {
-        DebugLayer::push( DebugLayer::CRITICAL, "<main>: "s + err.what() );
+        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Out of range: "s + err.what() );
     } catch( std::runtime_error& err ) {
-        DebugLayer::push( DebugLayer::CRITICAL, "<main>: "s + err.what() );
+        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Runtime error: "s + err.what() );
     } catch( ... ) {
-        DebugLayer::push( DebugLayer::CRITICAL, "<main>: Unknown RTE." );
+        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Unknown runtime error." );
     }
 
 
@@ -2703,11 +2955,12 @@ int main( int arg_count, char* args[] ) {
     ).count();
 
 
-    DebugLayer::push( "Chronos", Stream{} << "Core executed in: **" << dbg_elapsed << "**us." );
+    _PROTO_DebugLayer::uplinked_op( [ & ] {
+        _PROTO_DebugLayer::push( { "Chronos" }, "Core executed in: **"stm << dbg_elapsed << "**us." );
+    } );
+    
 
-    if( DebugLayer::is_critical() ) DebugLayer::uplink();
-
-    DebugLayer::release();
+    _PROTO_DebugLayer::outlink();
 
 
     return 0;

@@ -1,3 +1,18 @@
+/*
+    Ahri(ookie) - Acquisition Engine Section ( JS )
+
+    Hackerman: Mipsan
+
+
+
+    Vectorul de treburi care trebuie facute:
+    -message reply error checks
+    -guild <=> guild_id refurbish
+    -make_front standardize
+*/
+
+
+
 //#region Includes
 
 const config = require( "./config.json" );
@@ -424,6 +439,17 @@ class Engine {
 
 
             case INBOUND_REPLY_MESSAGE: {
+                if( !( payload instanceof Message ) ) {
+                    console.log( "[ CRITICAL FAULT ]\n" );
+                    console.log( "---------------------------------\n" );
+                    console.log( payload );
+                    console.log( "---------------------------------\n" );
+                    console.log( "Payload was not the expected type( Discord.Message )." );
+                    console.log( "---------------------------------\n\n" );
+
+                    return;
+                }
+
                 payload.reply( ins.at( 0 ) );
 
                 break; }
@@ -633,7 +659,6 @@ class Engine {
         return await sync;
     }
 };
-
 
 
 var ahri = new Engine();
