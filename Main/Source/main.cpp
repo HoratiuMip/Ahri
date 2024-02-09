@@ -6,9 +6,9 @@
 
 
     Vectorul de treburi care trebuie facute:
-    -_PROTO_DebugLayer stray strings??? - log was std::string_view, std::string fixed credits path overlapped on embed title overlapped on log? 
+    -keyword map hash order and priority oreder
+    -cout<<sstream
     -kiss command check
-    -DebugLayer layer cascade
 */
 
 
@@ -198,6 +198,7 @@ std::string operator + (
 
 
 #if 1
+
 double close_match( std::string_view str, std::string_view target ) {
     constexpr int64_t   offsets[]   = { 0, 1, -1 };
     int64_t             at          = 0;
@@ -212,7 +213,7 @@ double close_match( std::string_view str, std::string_view target ) {
 
             if( chr != target[ idx ] ) continue;
 
-            matches += pow( 1.0 / ( 1.0 + abs( at - idx ) ), 0.5 );
+            matches += 1.0 / ( 1.0 + abs( offset ) );
 
             break;
         }
@@ -222,6 +223,7 @@ double close_match( std::string_view str, std::string_view target ) {
 
     return pow( matches / std::max( str.length(), target.length() ), 1.0 );
 }
+
 #else
 double close_match( std::string_view str, std::string_view target ) {
     constexpr int64_t   rad_right   = 1;
@@ -449,11 +451,6 @@ public:
                 *this << _T;
             }
 
-        public:
-            operator const char* () {
-                return this->view().data();
-            }
-
         };
 
     public:
@@ -463,7 +460,7 @@ public:
         void outlink() {
             std::cout
                 << OUTBOUND_REPLY_MESSAGE
-                << content;
+                << content.view();
         }
     
     };
@@ -708,74 +705,9 @@ private:
 
 
 
-class DebugLayer {
-public:
-    inline static const char*   CRITICAL   = "Criticals";
-
-private:
-    inline static std::map< std::string, std::string >   _layers{};
-
-private:
-    static void _nop( std::string_view layer, std::string_view log ) {}
-
-    static void _push( std::string_view layer, std::string_view log ) {
-        std::string& current = _layers[ layer.data() ];
-
-        if( !current.empty() ) current += '\n';
-
-        ( current += '\t' ) += log;
-    }
-
-    inline static void ( *_route )( std::string_view, std::string_view ) = _nop;
-
-public:
-    static void push( std::string_view layer, std::string_view log ) {
-        std::invoke( _route, layer, log );
-    }
-
-    static void push_critical( std::string_view log ) {
-        _push( CRITICAL, log );
-    }
-
-    static void release() {
-        if( _route == _nop ) return;
-
-        std::cout << OUTBOUND_REPLY_MESSAGE;
-
-        for( auto& [ layer, log ] : _layers )
-            std::cout << "**" << layer << "**\n" << log << "\n\n";
-    }
-
-public:
-    static bool is_critical() {
-        return _layers.contains( CRITICAL );
-    }
-
-public:
-    static void uplink() {
-        _route = _push;
-    }
-
-    static void kill() {
-        _route = _nop;
-    }
-
-    static bool has_uplink() {
-        return _route == _push;
-    }
-
-public:
-    static void uplinked_op( std::function< void() > op ) {
-        if( !has_uplink() ) return;
-
-        std::invoke( op );
-    }
-
-};
-
 #define DEBUG_LAYER_PUSH_ARGS_V std::vector< std::string_view > location, std::string log
 
-class _PROTO_DebugLayer {
+class DebugLayer {
 protected:
     class Cascade {
     public:
@@ -849,32 +781,32 @@ protected:
             }
         }
 
-        cat->emplace_back( std::move( log ) );
+        cat->emplace_back( log.data() );
     }
 
-    inline static void ( *_route )( DEBUG_LAYER_PUSH_ARGS_V ) = _PROTO_DebugLayer::_nop;
+    inline static void ( *_route )( DEBUG_LAYER_PUSH_ARGS_V ) = DebugLayer::_nop;
 
 public:
     static void push( DEBUG_LAYER_PUSH_ARGS_V ) {
-        std::invoke( _PROTO_DebugLayer::_route, location, log );
+        std::invoke( DebugLayer::_route, location, log );
     }
 
 public:
     static void uplink() {
-        _PROTO_DebugLayer::_route = _PROTO_DebugLayer::_push;
+        DebugLayer::_route = DebugLayer::_push;
     }
 
     static void downlink() {
-        _PROTO_DebugLayer::_route = _PROTO_DebugLayer::_nop;
+        DebugLayer::_route = DebugLayer::_nop;
     }
 
     static bool is_uplinked() {
-        return _PROTO_DebugLayer::_route == _PROTO_DebugLayer::_push;
+        return DebugLayer::_route == DebugLayer::_push;
     }
 
 public:
     static void uplinked_op( std::function< void() > op ) {
-        if( !_PROTO_DebugLayer::is_uplinked() ) return;
+        if( !DebugLayer::is_uplinked() ) return;
 
         std::invoke( op );
     }
@@ -892,7 +824,7 @@ protected:
             if( entry.is_cat() ) {
                 shift() << "**" << entry.cat_head() << "**\n";
 
-                _PROTO_DebugLayer::_outlink( msg, entry.cat(), depth + 1 );
+                DebugLayer::_outlink( msg, entry.cat(), depth + 1 );
             } else {
                 if( &entry != &root.front() )
                     shift() << entry.msg() << '\n';
@@ -902,11 +834,11 @@ protected:
 
 public:
     static void outlink() {
-        if( !_PROTO_DebugLayer::is_uplinked() ) return;
+        if( !DebugLayer::is_uplinked() ) return;
 
         Outbound::Message msg{};
 
-        _PROTO_DebugLayer::_outlink( msg, _root, 0 );
+        DebugLayer::_outlink( msg, _root, 0 );
 
         msg.outlink();
     }
@@ -1282,10 +1214,10 @@ public:
             what( IGU_ARGS_U );
 
         } catch( std::runtime_error& err ) {
-            _PROTO_DebugLayer::push( { "Powers", "<execute>" }, "Runtime error: "s + err.what() );
+            DebugLayer::push( { "Powers", "<execute>" }, "Runtime error: "s + err.what() );
 
         } catch( ... ) {
-            _PROTO_DebugLayer::push( { "Powers", "<execute>" }, "Unknown runtime error." );
+            DebugLayer::push( { "Powers", "<execute>" }, "Unknown runtime error." );
         }
     }
 
@@ -1462,9 +1394,9 @@ public:
         } );
 
 
-        _PROTO_DebugLayer::uplinked_op( [ & ] {
+        DebugLayer::uplinked_op( [ & ] {
              for( auto& kw : kws )
-                _PROTO_DebugLayer::push(
+                DebugLayer::push(
                     { "Powers", "<extract_instruction_sense_2>", "Keywords:" },
                     std::get< 1 >( *std::get< 0 >( kw ) )[ 0 ].data()
                 );
@@ -1509,14 +1441,14 @@ public:
 
                 double confidence = accumulated_match / activation_count;
 
-                _PROTO_DebugLayer::uplinked_op( [ & ] {
-                    _PROTO_DebugLayer::push(
+                DebugLayer::uplinked_op( [ & ] {
+                    DebugLayer::push(
                         { "Powers", "<extract_instruction_sense_2>" },
                         "Extracted \""stm << chain << "\" with **" << confidence << "** confidence."
                     );
 
                     for( auto& in : cnt )
-                        _PROTO_DebugLayer::push( 
+                        DebugLayer::push( 
                             { "Powers", "<extract_instruction_sense_2>", "Remaining words:" }, 
                             "\""s + in + "\""
                         );
@@ -1528,8 +1460,8 @@ public:
             }
         }
 
-        _PROTO_DebugLayer::uplinked_op( [ & ] {
-            _PROTO_DebugLayer::push( 
+        DebugLayer::uplinked_op( [ & ] {
+            DebugLayer::push( 
                 { "Powers", "<extract_instruction_sense_2>" }, 
                 "All sense confidence too low to complete extraction." 
             );
@@ -1549,7 +1481,7 @@ public:
         if( !sound.empty() ) 
             sound.pop_back();
         else {
-            _PROTO_DebugLayer::push( 
+            DebugLayer::push( 
                 { "Powers", "<extract_sound_sense_2>" },
                 "Attempt to extract sound sense from an empty inbounds' deque." 
             );
@@ -1576,8 +1508,8 @@ public:
 
 
         if( best_match.second.empty() ) {
-            _PROTO_DebugLayer::uplinked_op( [ & ] {
-                _PROTO_DebugLayer::push( 
+            DebugLayer::uplinked_op( [ & ] {
+                DebugLayer::push( 
                     { "Powers", "<extract_sound_sense_2>" }, 
                     "All senses too low to complete extraction." 
                 );
@@ -1587,8 +1519,8 @@ public:
         }
 
 
-        _PROTO_DebugLayer::uplinked_op( [ & ] {
-            _PROTO_DebugLayer::push(
+        DebugLayer::uplinked_op( [ & ] {
+            DebugLayer::push(
                 { "Powers", "<extract_sound_sense_2>" },
                 "Extracted \""stm << best_match.second << "\" with **" << best_match.first << "** confidence."
             );
@@ -1623,8 +1555,8 @@ public:
         auto& ext = *set.begin();
 
         if( ext.confidence < 0.5 ) {
-            _PROTO_DebugLayer::uplinked_op( [ & ] {
-                _PROTO_DebugLayer::push( 
+            DebugLayer::uplinked_op( [ & ] {
+                DebugLayer::push( 
                     { "Powers", "<make_sense_of_2>" }, 
                     "All senses too low to consider." 
                 );
@@ -1650,8 +1582,8 @@ public:
                     best_match = { &kw, match };
 
         if( best_match.first ) {
-            _PROTO_DebugLayer::uplinked_op( [ & ] {
-                _PROTO_DebugLayer::push(
+            DebugLayer::uplinked_op( [ & ] {
+                DebugLayer::push(
                     { "Powers", "<calibrate_for_keyword_2>" },
                     "\""stm << str << "\" -> \"" << std::get< 1 >( *best_match.first )[ 0 ] << "\" with **" << best_match.second << "**"
                 );
@@ -2788,6 +2720,7 @@ public:
         { 12382791774924742628ULL, Users::voice_hi_set },
         { 183303123199750495ULL,   Users::voice_bye_set },
         { 3546343074134243021ULL,  Users::credits_steal },
+        { 6100755804673006265ULL,  Users::credits_steal },
 
         { 15754336788579780731ULL, Gamble::main },
         { 16987320819845335283ULL, Gamble::main },
@@ -2927,12 +2860,12 @@ int main( int arg_count, char* args[] ) {
 
 
     if( ins( "-debug" ) ) {
-        _PROTO_DebugLayer::uplink();
+        DebugLayer::uplink();
 
-        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "Voice: "s + ins.voice_id() );
-        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "Guild: "s + ins.guild_id() );
-        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "User: "s + ins.user_id() );
-        _PROTO_DebugLayer::push( { "Inbound front", "IDs" }, "User voice: "s + ins.user_voice_id() );
+        DebugLayer::push( { "Inbound front", "IDs" }, "Voice: "s + ins.voice_id() );
+        DebugLayer::push( { "Inbound front", "IDs" }, "Guild: "s + ins.guild_id() );
+        DebugLayer::push( { "Inbound front", "IDs" }, "User: "s + ins.user_id() );
+        DebugLayer::push( { "Inbound front", "IDs" }, "User voice: "s + ins.user_voice_id() );
     }
 
     Guild guild{ ins.guild_id() };
@@ -2942,11 +2875,11 @@ int main( int arg_count, char* args[] ) {
     try {
         std::invoke( event_map.at( ins.event() ), IGU_ARGS_U );
     } catch( std::out_of_range& err ) {
-        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Out of range: "s + err.what() );
+        DebugLayer::push( { "Exceptions", "<main>" }, "Out of range: "s + err.what() );
     } catch( std::runtime_error& err ) {
-        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Runtime error: "s + err.what() );
+        DebugLayer::push( { "Exceptions", "<main>" }, "Runtime error: "s + err.what() );
     } catch( ... ) {
-        _PROTO_DebugLayer::push( { "Exceptions", "<main>" }, "Unknown runtime error." );
+        DebugLayer::push( { "Exceptions", "<main>" }, "Unknown runtime error." );
     }
 
 
@@ -2955,12 +2888,12 @@ int main( int arg_count, char* args[] ) {
     ).count();
 
 
-    _PROTO_DebugLayer::uplinked_op( [ & ] {
-        _PROTO_DebugLayer::push( { "Chronos" }, "Core executed in: **"stm << dbg_elapsed << "**us." );
+    DebugLayer::uplinked_op( [ & ] {
+        DebugLayer::push( { "Chronos" }, "Core executed in: **"stm << dbg_elapsed << "**us." );
     } );
     
 
-    _PROTO_DebugLayer::outlink();
+    DebugLayer::outlink();
 
 
     return 0;
